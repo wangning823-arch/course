@@ -25,7 +25,9 @@ export default function SubjectsPage() {
   const fetchSubjects = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/subjects')
+      const clubId = localStorage.getItem('currentClubId')
+      const url = clubId ? `/api/subjects?clubId=${clubId}` : '/api/subjects'
+      const res = await fetch(url)
       const data = await res.json()
       setSubjects(data)
     } catch (error) {
@@ -48,6 +50,15 @@ export default function SubjectsPage() {
   React.useEffect(() => {
     fetchSubjects()
     fetchClubs()
+  }, [])
+
+  // 监听俱乐部切换
+  React.useEffect(() => {
+    const handleClubChanged = () => {
+      fetchSubjects()
+    }
+    window.addEventListener('clubChanged', handleClubChanged)
+    return () => window.removeEventListener('clubChanged', handleClubChanged)
   }, [])
 
   const handleSubmit = async () => {
@@ -103,7 +114,6 @@ export default function SubjectsPage() {
         <h1 className="text-2xl font-bold">科目管理</h1>
         <div className="flex items-center gap-2">
           <ClubSelector />
-          <Button variant="outline" onClick={fetchSubjects}>
           <Button variant="outline" onClick={fetchSubjects}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新

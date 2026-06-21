@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ClubSelector } from '@/components/club-selector'
 
 const teachingModeLabels: Record<string, string> = {
   private: '一对一',
@@ -30,27 +29,32 @@ export default function CoachPricesPage() {
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ coachId: '', subjectId: '', teachingMode: 'private', price: '' })
+  const [role, setRole] = React.useState('')
 
   // 获取当前用户信息和俱乐部列表
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
     if (!stored) return
     const user = JSON.parse(stored)
+    setRole(user.role || '')
 
     if (user.role === 'super_admin') {
       // 超管：获取所有俱乐部
       fetch('/api/clubs').then((res) => res.json()).then((data) => {
         setClubs(data)
-        if (data.length > 0) setSelectedClubId(String(data[0].id))
-      })
-    } else {
-      // 俱乐部管理员：只获取自己俱乐部
-      fetch('/api/clubs').then((res) => res.json()).then((data) => {
-        if (data.length > 0) {
-          setClubs(data)
+        const saved = localStorage.getItem('currentClubId')
+        if (saved && data.some((c: Club) => c.id === parseInt(saved))) {
+          setSelectedClubId(saved)
+        } else if (data.length > 0) {
           setSelectedClubId(String(data[0].id))
         }
       })
+    } else {
+      // 俱乐部管理员/教练：直接用自己的 clubId
+      const clubId = user.clubId || localStorage.getItem('currentClubId')
+      if (clubId) {
+        setSelectedClubId(String(clubId))
+      }
     }
   }, [])
 
@@ -135,8 +139,6 @@ export default function CoachPricesPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">教练定价</h1>
         <div className="flex items-center gap-2">
-          <ClubSelector />
-          <Button variant="outline" onClick={fetchPrices}>
           <Button variant="outline" onClick={fetchPrices}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新
@@ -205,7 +207,7 @@ export default function CoachPricesPage() {
         </div>
       </div>
 
-      {clubs.length > 1 && (
+      {clubs.length > 1 && role === 'super_admin' && (
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">俱乐部：</span>
           <Select value={selectedClubId} onValueChange={setSelectedClubId}>

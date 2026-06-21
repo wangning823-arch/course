@@ -38,7 +38,12 @@ export default function UsersPage() {
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
     if (stored) {
-      setCurrentUser(JSON.parse(stored))
+      const user = JSON.parse(stored)
+      setCurrentUser(user)
+      // 俱乐部管理员：自动锁定到自己的俱乐部
+      if (user.role === 'club_admin' && user.clubId) {
+        setFilterClubId(String(user.clubId))
+      }
     }
   }, [])
 
@@ -58,11 +63,23 @@ export default function UsersPage() {
     return currentUser?.role === 'super_admin' || currentUser?.role === 'club_admin'
   }, [currentUser])
 
+  // 俱乐部管理员只能在自己的俱乐部创建用户
+  const isClubAdminLocked = React.useMemo(() => {
+    return currentUser?.role === 'club_admin'
+  }, [currentUser])
+
   const fetchUsers = async (clubId?: string) => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      if (clubId) params.set('clubId', clubId)
+      // 俱乐部管理员：强制用自己的 clubId
+      const stored = localStorage.getItem('user')
+      const user = stored ? JSON.parse(stored) : null
+      if (user?.role === 'club_admin' && user?.clubId) {
+        params.set('clubId', String(user.clubId))
+      } else if (clubId && clubId !== 'all') {
+        params.set('clubId', clubId)
+      }
       const url = params.toString() ? `/api/users?${params}` : '/api/users'
       const res = await fetch(url)
       const data = await res.json()
@@ -153,17 +170,19 @@ export default function UsersPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">用户管理</h1>
         <div className="flex items-center gap-2">
-          <Select value={filterClubId} onValueChange={setFilterClubId}>
-            <SelectTrigger className="w-full sm:w-[180px] h-9">
-              <SelectValue placeholder="全部俱乐部" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部俱乐部</SelectItem>
-              {clubs.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {currentUser?.role === 'super_admin' && (
+            <Select value={filterClubId} onValueChange={setFilterClubId}>
+              <SelectTrigger className="w-full sm:w-[180px] h-9">
+                <SelectValue placeholder="全部俱乐部" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部俱乐部</SelectItem>
+                {clubs.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button variant="outline" onClick={() => fetchUsers(filterClubId === 'all' ? '' : filterClubId)}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新
@@ -171,7 +190,7 @@ export default function UsersPage() {
           {availableRoles.length > 0 && (
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button onClick={() => { setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'coach', password: '', clubId: '' }); setEditId(null); setCreatedPassword('') }}>
+                <Button onClick={() => { setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'coach', password: '', clubId: isClubAdminLocked ? String(currentUser?.clubId || '') : '' }); setEditId(null); setCreatedPassword('') }}>
                   <Plus className="h-4 w-4 mr-1" />添加用户
                 </Button>
               </DialogTrigger>
@@ -209,14 +228,18 @@ export default function UsersPage() {
                   {needClubSelect && !editId && (
                     <div className="space-y-2">
                       <label className="text-sm font-medium">所属俱乐部 *</label>
-                      <Select value={formData.clubId} onValueChange={(v) => setFormData({ ...formData, clubId: v })}>
-                        <SelectTrigger><SelectValue placeholder="请选择俱乐部" /></SelectTrigger>
-                        <SelectContent>
-                          {clubs.map((c) => (
-                            <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {isClubAdminLocked ? (
+                        <Input value={clubs.find(c => c.id === currentUser?.clubId)?.name || ''} disabled className="bg-gray-50" />
+                      ) : (
+                        <Select value={formData.clubId} onValueChange={(v) => setFormData({ ...formData, clubId: v })}>
+                          <SelectTrigger><SelectValue placeholder="请选择俱乐部" /></SelectTrigger>
+                          <SelectContent>
+                            {clubs.map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                   )}
                   <div className="space-y-2">

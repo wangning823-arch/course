@@ -21,7 +21,9 @@ export default function CampusesPage() {
   const fetchCampuses = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/campuses')
+      const clubId = localStorage.getItem('currentClubId')
+      const url = clubId ? `/api/campuses?clubId=${clubId}` : '/api/campuses'
+      const res = await fetch(url)
       const data = await res.json()
       setCampuses(data)
     } catch (error) {
@@ -44,6 +46,15 @@ export default function CampusesPage() {
   React.useEffect(() => {
     fetchCampuses()
     fetchClubs()
+  }, [])
+
+  // 监听俱乐部切换
+  React.useEffect(() => {
+    const handleClubChanged = () => {
+      fetchCampuses()
+    }
+    window.addEventListener('clubChanged', handleClubChanged)
+    return () => window.removeEventListener('clubChanged', handleClubChanged)
   }, [])
 
   const handleSubmit = async () => {
@@ -92,7 +103,6 @@ export default function CampusesPage() {
         <h1 className="text-2xl font-bold">校区管理</h1>
         <div className="flex items-center gap-2">
           <ClubSelector />
-          <Button variant="outline" onClick={fetchCampuses}>
           <Button variant="outline" onClick={fetchCampuses}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新

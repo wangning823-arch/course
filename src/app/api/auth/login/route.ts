@@ -34,6 +34,18 @@ export async function POST(request: NextRequest) {
   // 生成 token
   const token = Buffer.from(JSON.stringify({ userId: user.id, phone: user.phone })).toString('base64')
 
+  // 获取用户的俱乐部信息
+  let clubId: number | null = null
+  if (user.role !== 'super_admin') {
+    const membership = await prisma.clubMember.findFirst({
+      where: { userId: user.id },
+      select: { clubId: true },
+    })
+    if (membership) {
+      clubId = membership.clubId
+    }
+  }
+
   return NextResponse.json({
     success: true,
     token,
@@ -42,6 +54,7 @@ export async function POST(request: NextRequest) {
       name: user.name,
       phone: user.phone,
       role: user.role,
+      clubId,
     },
   })
 }

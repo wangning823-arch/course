@@ -44,6 +44,7 @@ const systemAdminItems = {
     { icon: Building2, label: '俱乐部管理', href: '/admin/clubs' },
   ],
   club_admin: [
+    { icon: BarChart3, label: '课时统计', href: '/statistics' },
     { icon: Users, label: '用户管理', href: '/admin/users' },
     { icon: MapPin, label: '校区管理', href: '/admin/campuses' },
     { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
@@ -64,14 +65,18 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
       const user = JSON.parse(stored)
       setRole(user.role || '')
       if (user.role !== 'super_admin') {
-        fetch('/api/clubs')
-          .then((res) => res.json())
-          .then((clubs) => {
-            if (clubs.length > 0) {
-              setLogoText(`${clubs[0].name}`)
-            }
-          })
-          .catch(() => {})
+        // 从用户信息中获取 clubId，查对应俱乐部名称
+        const clubId = user.clubId || localStorage.getItem('currentClubId')
+        if (clubId) {
+          fetch(`/api/clubs/${clubId}`)
+            .then((res) => res.json())
+            .then((club) => {
+              if (club?.name) {
+                setLogoText(club.name)
+              }
+            })
+            .catch(() => {})
+        }
       }
     }
   }, [])

@@ -54,19 +54,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         if (user.role === 'super_admin') {
           document.title = '课时管理系统'
         } else {
-          // 俱乐部管理员或教练：获取俱乐部名称
-          fetch('/api/clubs')
-            .then((res) => res.json())
-            .then((clubs) => {
-              if (clubs.length > 0) {
-                document.title = `${clubs[0].name}课时管理系统`
-              } else {
+          // 俱乐部管理员或教练：获取所属俱乐部名称
+          const clubId = user.clubId || localStorage.getItem('currentClubId')
+          if (clubId) {
+            fetch(`/api/clubs/${clubId}`)
+              .then((res) => res.json())
+              .then((club) => {
+                document.title = club?.name ? `${club.name}课时管理系统` : '课时管理系统'
+              })
+              .catch(() => {
                 document.title = '课时管理系统'
-              }
-            })
-            .catch(() => {
-              document.title = '课时管理系统'
-            })
+              })
+          } else {
+            document.title = '课时管理系统'
+          }
         }
       }
     }

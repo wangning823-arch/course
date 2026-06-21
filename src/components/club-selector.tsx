@@ -8,8 +8,20 @@ interface Club { id: number; name: string }
 export function ClubSelector() {
   const [clubs, setClubs] = React.useState<Club[]>([])
   const [currentClubId, setCurrentClubId] = React.useState<string>('')
+  const [role, setRole] = React.useState('')
 
   React.useEffect(() => {
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      const user = JSON.parse(stored)
+      setRole(user.role || '')
+    }
+  }, [])
+
+  React.useEffect(() => {
+    // 非超管不加载俱乐部列表
+    if (role && role !== 'super_admin') return
+
     fetch('/api/clubs')
       .then((res) => res.json())
       .then((data) => {
@@ -23,7 +35,7 @@ export function ClubSelector() {
         }
       })
       .catch(() => {})
-  }, [])
+  }, [role])
 
   const handleChange = (value: string) => {
     setCurrentClubId(value)
@@ -31,6 +43,8 @@ export function ClubSelector() {
     window.dispatchEvent(new CustomEvent('clubChanged', { detail: { clubId: value } }))
   }
 
+  // 非超管不显示选择器
+  if (role && role !== 'super_admin') return null
   if (clubs.length === 0) return null
 
   return (

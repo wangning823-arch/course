@@ -35,6 +35,10 @@ export default function LoginPage() {
       }
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
+      // 非超管：存储俱乐部ID到 localStorage
+      if (data.user.clubId) {
+        localStorage.setItem('currentClubId', String(data.user.clubId))
+      }
       window.location.href = '/'
     } catch (e) {
       setError('网络错误，请重试')
