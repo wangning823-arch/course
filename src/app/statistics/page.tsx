@@ -19,9 +19,11 @@ export default function StatisticsPage() {
   const [loading, setLoading] = React.useState(true)
 
   const fetchStats = async () => {
+    const clubId = localStorage.getItem('currentClubId')
+    if (!clubId) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/statistics?period=${period}`)
+      const res = await fetch(`/api/statistics?clubId=${clubId}&period=${period}`)
       const data = await res.json()
       setStats(data)
     } catch (error) {
@@ -34,6 +36,13 @@ export default function StatisticsPage() {
   React.useEffect(() => {
     fetchStats()
   }, [period])
+
+  // 监听俱乐部切换
+  React.useEffect(() => {
+    const handleClubChanged = () => fetchStats()
+    window.addEventListener('clubChanged', handleClubChanged)
+    return () => window.removeEventListener('clubChanged', handleClubChanged)
+  }, [fetchStats])
 
   return (
     <div className="space-y-6">

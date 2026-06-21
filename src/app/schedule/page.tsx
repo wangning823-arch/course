@@ -89,12 +89,14 @@ export default function SchedulePage() {
 
   // 加载下拉选项
   const loadOptions = React.useCallback(async () => {
+    const clubId = localStorage.getItem('currentClubId')
+    if (!clubId) return
     try {
       const [subRes, coachRes, campusRes, studentRes] = await Promise.all([
-        fetch('/api/subjects'),
-        fetch('/api/users?role=coach'),
-        fetch('/api/campuses'),
-        fetch('/api/students'),
+        fetch(`/api/subjects?clubId=${clubId}`),
+        fetch(`/api/users?role=coach&clubId=${clubId}`),
+        fetch(`/api/campuses?clubId=${clubId}`),
+        fetch(`/api/students?clubId=${clubId}`),
       ])
       const [subData, coachData, campusData, studentData] = await Promise.all([
         subRes.json(), coachRes.json(), campusRes.json(), studentRes.json(),
@@ -110,11 +112,13 @@ export default function SchedulePage() {
 
   // 加载课程数据
   const loadCourses = React.useCallback(async () => {
+    const clubId = localStorage.getItem('currentClubId')
+    if (!clubId) return
     setLoading(true)
     try {
       const startDate = weekDates[0].toISOString()
       const endDate = new Date(weekDates[6].getTime() + 86400000 - 1).toISOString()
-      const res = await fetch(`/api/courses?startDate=${startDate}&endDate=${endDate}`)
+      const res = await fetch(`/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`)
       const data = await res.json()
       setCourses(data)
     } catch (e) {
@@ -132,18 +136,25 @@ export default function SchedulePage() {
     loadOptions()
   }, [loadOptions])
 
+  // 监听俱乐部切换
+  React.useEffect(() => {
+    const handleClubChanged = () => {
+      loadCourses()
+      loadOptions()
+    }
+    window.addEventListener('clubChanged', handleClubChanged)
+    return () => window.removeEventListener('clubChanged', handleClubChanged)
+  }, [loadCourses, loadOptions])
+
   // 创建课程
   const handleCreate = async () => {
     if (!form.subjectId || !form.coachId || !form.scheduledDate) {
       alert('请填写必要信息')
       return
     }
-    // 获取第一个俱乐部 ID
-    const clubRes = await fetch('/api/clubs')
-    const clubs = await clubRes.json()
-    const clubId = clubs[0]?.id
+    const clubId = localStorage.getItem('currentClubId')
     if (!clubId) {
-      alert('请先创建俱乐部')
+      alert('请先选择俱乐部')
       return
     }
 

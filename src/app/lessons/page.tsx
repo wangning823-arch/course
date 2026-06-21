@@ -79,11 +79,13 @@ export default function LessonsPage() {
 
   // 加载下拉选项
   const loadOptions = React.useCallback(async () => {
+    const clubId = localStorage.getItem('currentClubId')
+    if (!clubId) return
     try {
       const [courseRes, studentRes, coachRes] = await Promise.all([
-        fetch('/api/courses'),
-        fetch('/api/students'),
-        fetch('/api/users?role=coach'),
+        fetch(`/api/courses?clubId=${clubId}`),
+        fetch(`/api/students?clubId=${clubId}`),
+        fetch(`/api/users?role=coach&clubId=${clubId}`),
       ])
       const [courseData, studentData, coachData] = await Promise.all([
         courseRes.json(), studentRes.json(), coachRes.json(),
@@ -98,10 +100,13 @@ export default function LessonsPage() {
 
   // 加载课时记录
   const loadLessons = React.useCallback(async () => {
+    const clubId = localStorage.getItem('currentClubId')
+    if (!clubId) return
     setLoading(true)
     try {
-      const params = search ? `?search=${encodeURIComponent(search)}` : ''
-      const res = await fetch(`/api/lessons${params}`)
+      let params = `clubId=${clubId}`
+      if (search) params += `&search=${encodeURIComponent(search)}`
+      const res = await fetch(`/api/lessons?${params}`)
       const data = await res.json()
       setLessons(data)
     } catch (e) {
@@ -118,6 +123,16 @@ export default function LessonsPage() {
   React.useEffect(() => {
     loadOptions()
   }, [loadOptions])
+
+  // 监听俱乐部切换
+  React.useEffect(() => {
+    const handleClubChanged = () => {
+      loadLessons()
+      loadOptions()
+    }
+    window.addEventListener('clubChanged', handleClubChanged)
+    return () => window.removeEventListener('clubChanged', handleClubChanged)
+  }, [loadLessons, loadOptions])
 
   // 创建课时记录
   const handleCreate = async () => {

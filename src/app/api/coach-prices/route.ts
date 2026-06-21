@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// GET - 获取教练定价列表
+// GET - 获取教练定价列表（按俱乐部过滤）
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
+  const clubId = searchParams.get('clubId')
   const coachId = searchParams.get('coachId')
 
-  const where: any = {}
+  if (!clubId) {
+    return NextResponse.json({ error: '缺少 clubId 参数' }, { status: 400 })
+  }
+
+  const where: any = { clubId: parseInt(clubId) }
   if (coachId) where.coachId = parseInt(coachId)
 
   const prices = await prisma.coachPrice.findMany({
@@ -20,6 +25,7 @@ export async function GET(request: NextRequest) {
 
   const data = prices.map((p) => ({
     id: p.id,
+    clubId: p.clubId,
     coachId: p.coachId,
     coachName: p.coach.name,
     subjectId: p.subjectId,
@@ -33,16 +39,17 @@ export async function GET(request: NextRequest) {
 
 // POST - 创建教练定价
 export async function POST(request: NextRequest) {
-  const { coachId, subjectId, teachingMode, price } = await request.json()
+  const { clubId, coachId, subjectId, teachingMode, price } = await request.json()
 
-  if (!coachId || !subjectId || !teachingMode || price === undefined) {
+  if (!clubId || !coachId || !subjectId || !teachingMode || price === undefined) {
     return NextResponse.json({ error: '请填写完整信息' }, { status: 400 })
   }
 
   // 检查是否已存在同组合的定价
   const existing = await prisma.coachPrice.findUnique({
     where: {
-      coachId_subjectId_teachingMode: {
+      clubId_coachId_subjectId_teachingMode: {
+        clubId: parseInt(clubId),
         coachId: parseInt(coachId),
         subjectId: parseInt(subjectId),
         teachingMode,
@@ -61,6 +68,7 @@ export async function POST(request: NextRequest) {
 
   const priceRecord = await prisma.coachPrice.create({
     data: {
+      clubId: parseInt(clubId),
       coachId: parseInt(coachId),
       subjectId: parseInt(subjectId),
       teachingMode,

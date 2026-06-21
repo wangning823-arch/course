@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const search = searchParams.get('search') || ''
+  const clubId = searchParams.get('clubId')
 
   const where: any = {}
   if (search) {
@@ -14,6 +15,11 @@ export async function GET(request: NextRequest) {
       { parentName: { contains: search } },
       { parentPhone: { contains: search } },
     ]
+  }
+
+  // 按俱乐部过滤：通过课程关联筛选属于该俱乐部的学员
+  if (clubId) {
+    where.courses = { some: { course: { clubId: parseInt(clubId) } } }
   }
 
   const students = await prisma.student.findMany({

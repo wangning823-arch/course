@@ -30,13 +30,16 @@ export default function HomePage() {
     monthIncome: 0,
   })
 
-  React.useEffect(() => {
+  const fetchData = React.useCallback(() => {
+    const clubId = localStorage.getItem('currentClubId')
+    if (!clubId) return
+
     // 获取今日课程
     const today = new Date()
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
 
-    fetch(`/api/courses?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`)
+    fetch(`/api/courses?clubId=${clubId}&startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`)
       .then((res) => res.json())
       .then((data) => {
         setCourses(data)
@@ -45,7 +48,7 @@ export default function HomePage() {
       .catch(console.error)
 
     // 获取统计数据
-    fetch('/api/statistics?period=month')
+    fetch(`/api/statistics?clubId=${clubId}&period=month`)
       .then((res) => res.json())
       .then((data) => {
         setStats((prev) => ({
@@ -57,6 +60,15 @@ export default function HomePage() {
       })
       .catch(console.error)
   }, [])
+
+  React.useEffect(() => {
+    fetchData()
+
+    // 监听俱乐部切换事件
+    const handleClubChanged = () => fetchData()
+    window.addEventListener('clubChanged', handleClubChanged)
+    return () => window.removeEventListener('clubChanged', handleClubChanged)
+  }, [fetchData])
 
   return (
     <div className="space-y-6">

@@ -56,6 +56,7 @@ model Club {
   courses       Course[]
   settlements   Settlement[]
   members       ClubMember[]
+  coachPrices   CoachPrice[]
 }
 
 // 校区表
@@ -113,9 +114,10 @@ model Subject {
   @@index([clubId])
 }
 
-// 教练定价表（教练+科目+授课模式 = 价格）
+// 教练定价表（俱乐部+教练+科目+授课模式 = 价格）
 model CoachPrice {
   id            Int      @id @default(autoincrement())
+  clubId        Int      // 俱乐部ID
   coachId       Int      // 教练ID
   subjectId     Int      // 科目ID
   teachingMode  String   // 授课方式：private=一对一, duo=一对二, group=一对多
@@ -124,10 +126,12 @@ model CoachPrice {
   updatedAt     DateTime @updatedAt
 
   // 关联
+  club          Club     @relation(fields: [clubId], references: [id])
   coach         User     @relation(fields: [coachId], references: [id])
   subject       Subject  @relation(fields: [subjectId], references: [id])
 
-  @@unique([coachId, subjectId, teachingMode])
+  @@unique([clubId, coachId, subjectId, teachingMode])
+  @@index([clubId])
   @@index([coachId])
   @@index([subjectId])
 }

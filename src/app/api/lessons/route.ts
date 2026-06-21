@@ -8,8 +8,10 @@ export async function GET(request: NextRequest) {
   const startDate = searchParams.get('startDate')
   const endDate = searchParams.get('endDate')
   const coachId = searchParams.get('coachId')
+  const clubId = searchParams.get('clubId')
 
   const where: any = {}
+  if (clubId) where.course = { clubId: parseInt(clubId) }
   if (search) {
     where.OR = [
       { course: { subject: { name: { contains: search } } } },

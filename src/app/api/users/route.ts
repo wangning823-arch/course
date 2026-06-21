@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const search = searchParams.get('search') || ''
   const role = searchParams.get('role') || ''
+  const clubId = searchParams.get('clubId') || ''
 
   const where: any = {}
   if (search) {
@@ -21,6 +22,10 @@ export async function GET(request: NextRequest) {
   }
   if (role) {
     where.role = role
+  }
+  // 按俱乐部过滤：通过 ClubMember 关联筛选属于该俱乐部的用户
+  if (clubId) {
+    where.memberships = { some: { clubId: parseInt(clubId) } }
   }
 
   const users = await prisma.user.findMany({

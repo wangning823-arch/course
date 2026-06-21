@@ -5,6 +5,15 @@ import { prisma } from '@/lib/prisma'
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const period = searchParams.get('period') || 'month'
+  const clubId = searchParams.get('clubId')
+
+  // 基础过滤条件：按俱乐部过滤课程
+  const baseWhere: any = {
+    status: 'confirmed',
+  }
+  if (clubId) {
+    baseWhere.course = { clubId: parseInt(clubId) }
+  }
 
   // 计算时间范围
   const now = new Date()
@@ -24,20 +33,14 @@ export async function GET(request: NextRequest) {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1)
   }
 
+  const dateWhere = { ...baseWhere, createdAt: { gte: startDate } }
+
   // 总课时数
-  const totalLessons = await prisma.lesson.count({
-    where: {
-      createdAt: { gte: startDate },
-      status: 'confirmed',
-    },
-  })
+  const totalLessons = await prisma.lesson.count({ where: dateWhere })
 
   // 总时长
   const durationResult = await prisma.lesson.aggregate({
-    where: {
-      createdAt: { gte: startDate },
-      status: 'confirmed',
-    },
+    where: dateWhere,
     _sum: { durationMinutes: true },
   })
   const totalMinutes = durationResult._sum.durationMinutes || 0
@@ -45,19 +48,13 @@ export async function GET(request: NextRequest) {
   // 活跃学员数
   const activeStudents = await prisma.lesson.groupBy({
     by: ['studentId'],
-    where: {
-      createdAt: { gte: startDate },
-      status: 'confirmed',
-    },
+    where: dateWhere,
   })
 
   // 教练排名
   const coachStats = await prisma.lesson.groupBy({
     by: ['coachId'],
-    where: {
-      createdAt: { gte: startDate },
-      status: 'confirmed',
-    },
+    where: dateWhere,
     _count: { id: true },
     _sum: { durationMinutes: true },
   })
@@ -76,9 +73,8 @@ export async function GET(request: NextRequest) {
         const studentCount = await prisma.lesson.groupBy({
           by: ['studentId'],
           where: {
+            ...dateWhere,
             coachId: stat.coachId,
-            createdAt: { gte: startDate },
-            status: 'confirmed',
           },
         })
 
@@ -100,8 +96,8 @@ export async function GET(request: NextRequest) {
 
     const count = await prisma.lesson.count({
       where: {
+        ...baseWhere,
         createdAt: { gte: monthStart, lte: monthEnd },
-        status: 'confirmed',
       },
     })
 
@@ -114,10 +110,7 @@ export async function GET(request: NextRequest) {
   // 科目分布
   const subjectStats = await prisma.lesson.groupBy({
     by: ['courseId'],
-    where: {
-      createdAt: { gte: startDate },
-      status: 'confirmed',
-    },
+    where: dateWhere,
   })
 
   const subjectDistribution: Record<string, number> = {}
@@ -141,15 +134,13 @@ export async function GET(request: NextRequest) {
 
   // 本月收入（根据已确认课时 × 教练定价计算）
   const monthLessons = await prisma.lesson.findMany({
-    where: {
-      createdAt: { gte: startDate },
-      status: 'confirmed',
-    },
+    where: dateWhere,
     include: {
       course: {
         include: {
           subject: { select: { id: true, durationMinutes: true } },
           coach: { select: { id: true } },
+          club: { select: { id: true } },
         },
       },
     },
@@ -159,10 +150,11 @@ export async function GET(request: NextRequest) {
     const duration = lesson.durationMinutes || 0
     const standardDuration = lesson.course.subject.durationMinutes || 60
 
-    // 从 CoachPrice 表查找价格（教练+科目+授课模式）
+    // 从 CoachPrice 表查找价格（俱乐部+教练+科目+授课模式）
     const coachPrice = await prisma.coachPrice.findUnique({
       where: {
-        coachId_subjectId_teachingMode: {
+        clubId_coachId_subjectId_teachingMode: {
+          clubId: lesson.course.club.id,
           coachId: lesson.course.coach.id,
           subjectId: lesson.course.subject.id,
           teachingMode: lesson.course.teachingMode,

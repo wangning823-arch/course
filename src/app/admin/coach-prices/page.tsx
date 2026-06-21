@@ -18,19 +18,46 @@ const teachingModeLabels: Record<string, string> = {
 
 interface Coach { id: number; name: string }
 interface Subject { id: number; name: string }
+interface Club { id: number; name: string }
 
 export default function CoachPricesPage() {
   const [prices, setPrices] = React.useState<any[]>([])
   const [coaches, setCoaches] = React.useState<Coach[]>([])
   const [subjects, setSubjects] = React.useState<Subject[]>([])
+  const [clubs, setClubs] = React.useState<Club[]>([])
+  const [selectedClubId, setSelectedClubId] = React.useState<string>('')
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ coachId: '', subjectId: '', teachingMode: 'private', price: '' })
 
+  // 获取当前用户信息和俱乐部列表
+  React.useEffect(() => {
+    const stored = localStorage.getItem('user')
+    if (!stored) return
+    const user = JSON.parse(stored)
+
+    if (user.role === 'super_admin') {
+      // 超管：获取所有俱乐部
+      fetch('/api/clubs').then((res) => res.json()).then((data) => {
+        setClubs(data)
+        if (data.length > 0) setSelectedClubId(String(data[0].id))
+      })
+    } else {
+      // 俱乐部管理员：只获取自己俱乐部
+      fetch('/api/clubs').then((res) => res.json()).then((data) => {
+        if (data.length > 0) {
+          setClubs(data)
+          setSelectedClubId(String(data[0].id))
+        }
+      })
+    }
+  }, [])
+
   const fetchPrices = async () => {
+    if (!selectedClubId) return
     setLoading(true)
     try {
-      const res = await fetch('/api/coach-prices')
+      const res = await fetch(`/api/coach-prices?clubId=${selectedClubId}`)
       const data = await res.json()
       setPrices(data)
     } catch (error) {
@@ -41,10 +68,11 @@ export default function CoachPricesPage() {
   }
 
   const fetchOptions = async () => {
+    if (!selectedClubId) return
     try {
       const [coachRes, subjectRes] = await Promise.all([
-        fetch('/api/users?role=coach'),
-        fetch('/api/subjects'),
+        fetch(`/api/users?role=coach&clubId=${selectedClubId}`),
+        fetch(`/api/subjects?clubId=${selectedClubId}`),
       ])
       const [coachData, subjectData] = await Promise.all([coachRes.json(), subjectRes.json()])
       setCoaches(coachData)
@@ -55,9 +83,11 @@ export default function CoachPricesPage() {
   }
 
   React.useEffect(() => {
-    fetchPrices()
-    fetchOptions()
-  }, [])
+    if (selectedClubId) {
+      fetchPrices()
+      fetchOptions()
+    }
+  }, [selectedClubId])
 
   const handleSubmit = async () => {
     if (!formData.coachId || !formData.subjectId || !formData.price) {
@@ -69,6 +99,7 @@ export default function CoachPricesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clubId: selectedClubId,
           coachId: formData.coachId,
           subjectId: formData.subjectId,
           teachingMode: formData.teachingMode,
@@ -97,16 +128,6 @@ export default function CoachPricesPage() {
       console.error('删除失败:', error)
     }
   }
-
-  // 按教练分组显示
-  const groupedByCoach = React.useMemo(() => {
-    const groups: Record<string, any[]> = {}
-    for (const p of prices) {
-      if (!groups[p.coachName]) groups[p.coachName] = []
-      groups[p.coachName].push(p)
-    }
-    return groups
-  }, [prices])
 
   return (
     <div className="space-y-4">
@@ -180,6 +201,22 @@ export default function CoachPricesPage() {
           </Dialog>
         </div>
       </div>
+
+      {clubs.length > 1 && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">俱乐部：</span>
+          <Select value={selectedClubId} onValueChange={setSelectedClubId}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="选择俱乐部" />
+            </SelectTrigger>
+            <SelectContent>
+              {clubs.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-0">

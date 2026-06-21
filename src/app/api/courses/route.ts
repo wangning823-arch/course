@@ -8,8 +8,10 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get('endDate')
   const coachId = searchParams.get('coachId')
   const campusId = searchParams.get('campusId')
+  const clubId = searchParams.get('clubId')
 
   const where: any = {}
+  if (clubId) where.clubId = parseInt(clubId)
   if (startDate && endDate) {
     where.scheduledDate = {
       gte: new Date(startDate),

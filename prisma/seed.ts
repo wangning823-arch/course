@@ -137,17 +137,17 @@ async function main() {
     },
   })
 
-  // 创建教练定价（教练+科目+授课模式 = 价格）
+  // 创建教练定价（俱乐部+教练+科目+授课模式 = 价格）
   await prisma.coachPrice.createMany({
     data: [
       // 张教练：篮球
-      { coachId: coach1.id, subjectId: subject1.id, teachingMode: 'private', price: 150 },
-      { coachId: coach1.id, subjectId: subject1.id, teachingMode: 'group', price: 100 },
+      { clubId: club.id, coachId: coach1.id, subjectId: subject1.id, teachingMode: 'private', price: 150 },
+      { clubId: club.id, coachId: coach1.id, subjectId: subject1.id, teachingMode: 'group', price: 100 },
       // 李教练：足球
-      { coachId: coach2.id, subjectId: subject2.id, teachingMode: 'private', price: 180 },
-      { coachId: coach2.id, subjectId: subject2.id, teachingMode: 'group', price: 120 },
+      { clubId: club.id, coachId: coach2.id, subjectId: subject2.id, teachingMode: 'private', price: 180 },
+      { clubId: club.id, coachId: coach2.id, subjectId: subject2.id, teachingMode: 'group', price: 120 },
       // 王教练：游泳
-      { coachId: coach3.id, subjectId: subject3.id, teachingMode: 'private', price: 250 },
+      { clubId: club.id, coachId: coach3.id, subjectId: subject3.id, teachingMode: 'private', price: 250 },
     ],
   })
 
