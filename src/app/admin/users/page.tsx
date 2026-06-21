@@ -154,10 +154,16 @@ export default function UsersPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除该用户吗？')) return
     try {
-      await authFetch(`/api/users/${id}`, { method: 'DELETE' })
+      const res = await authFetch(`/api/users/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        alert(data.error || '删除失败')
+        return
+      }
       fetchUsers(filterClubId === 'all' ? '' : filterClubId)
     } catch (error) {
       console.error('删除失败:', error)
+      alert('删除失败，请重试')
     }
   }
 

@@ -23,9 +23,7 @@ export async function GET(request: NextRequest) {
     clubId: s.clubId,
     name: s.name,
     category: s.category,
-    teachingMode: s.teachingMode,
     durationMinutes: s.durationMinutes,
-    price: Number(s.price),
     club: s.club.name,
     status: s.status,
     createdAt: s.createdAt,
@@ -36,9 +34,9 @@ export async function GET(request: NextRequest) {
 
 // POST - 创建科目
 export async function POST(request: NextRequest) {
-  const { clubId, name, category, teachingMode, durationMinutes, price, description } = await request.json()
+  const { clubId, name, category, durationMinutes, description } = await request.json()
 
-  if (!clubId || !name || !teachingMode || !price) {
+  if (!clubId || !name) {
     return NextResponse.json({ error: '请填写完整信息' }, { status: 400 })
   }
 
@@ -58,9 +56,9 @@ export async function POST(request: NextRequest) {
       clubId: finalClubId,
       name,
       category,
-      teachingMode,
+      teachingMode: 'private', // 默认一对一，具体在教练定价中设置
       durationMinutes: parseInt(String(durationMinutes)) || 60,
-      price: parseFloat(String(price)),
+      price: 0, // 课时单价在教练定价中设置
       description,
     },
   })

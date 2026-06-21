@@ -5,7 +5,7 @@ import { getAuthUser } from '@/lib/auth'
 // PUT - 更新科目
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { name, category, teachingMode, durationMinutes, price, status } = await request.json()
+  const { name, category, durationMinutes, status } = await request.json()
 
   // 验证俱乐部归属
   const authUser = await getAuthUser(request)
@@ -19,7 +19,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   const subject = await prisma.subject.update({
     where: { id: parseInt(id) },
-    data: { name, category, teachingMode, durationMinutes, price, status },
+    data: { name, category, durationMinutes, status },
   })
 
   return NextResponse.json(subject)

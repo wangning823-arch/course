@@ -5,7 +5,6 @@ import { Plus, Edit, Trash2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -18,8 +17,7 @@ export default function SubjectsPage() {
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({
-    clubId: '', name: '', category: '球类', teachingMode: 'private',
-    durationMinutes: '60', price: '',
+    clubId: '', name: '', category: '球类', durationMinutes: '60',
   })
   const [editId, setEditId] = React.useState<number | null>(null)
   const [role, setRole] = React.useState('')
@@ -102,7 +100,7 @@ export default function SubjectsPage() {
         })
       }
       setDialogOpen(false)
-      setFormData({ clubId: '', name: '', category: '球类', teachingMode: 'private', durationMinutes: '60', price: '' })
+      setFormData({ clubId: '', name: '', category: '球类', durationMinutes: '60' })
       setEditId(null)
       fetchSubjects()
     } catch (error) {
@@ -125,9 +123,7 @@ export default function SubjectsPage() {
       clubId: isClubAdmin ? userClubId : String(subject.clubId || ''),
       name: subject.name,
       category: subject.category || '球类',
-      teachingMode: subject.teachingMode,
       durationMinutes: String(subject.durationMinutes || 60),
-      price: String(subject.price),
     })
     setEditId(subject.id)
     setDialogOpen(true)
@@ -145,7 +141,7 @@ export default function SubjectsPage() {
           </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={() => { setFormData({ clubId: '', name: '', category: '球类', teachingMode: 'private', durationMinutes: '60', price: '' }); setEditId(null) }}>
+              <Button onClick={() => { setFormData({ clubId: '', name: '', category: '球类', durationMinutes: '60' }); setEditId(null) }}>
                 <Plus className="h-4 w-4 mr-1" />添加科目
               </Button>
             </DialogTrigger>
@@ -174,44 +170,25 @@ export default function SubjectsPage() {
                   <label className="text-sm font-medium">科目名称</label>
                   <Input placeholder="请输入科目名称" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">分类</label>
-                    <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="球类">球类</SelectItem>
-                        <SelectItem value="水上">水上</SelectItem>
-                        <SelectItem value="武术">武术</SelectItem>
-                        <SelectItem value="舞蹈">舞蹈</SelectItem>
-                        <SelectItem value="文化课">文化课</SelectItem>
-                        <SelectItem value="艺术">艺术</SelectItem>
-                        <SelectItem value="乐器">乐器</SelectItem>
-                        <SelectItem value="其他">其他</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">授课模式</label>
-                    <Select value={formData.teachingMode} onValueChange={(v) => setFormData({ ...formData, teachingMode: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="private">一对一</SelectItem>
-                        <SelectItem value="duo">一对二</SelectItem>
-                        <SelectItem value="group">一对多</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">分类</label>
+                  <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="球类">球类</SelectItem>
+                      <SelectItem value="水上">水上</SelectItem>
+                      <SelectItem value="武术">武术</SelectItem>
+                      <SelectItem value="舞蹈">舞蹈</SelectItem>
+                      <SelectItem value="文化课">文化课</SelectItem>
+                      <SelectItem value="艺术">艺术</SelectItem>
+                      <SelectItem value="乐器">乐器</SelectItem>
+                      <SelectItem value="其他">其他</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">默认时长(分钟)</label>
-                    <Input type="number" placeholder="60" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">课时单价(元)</label>
-                    <Input type="number" placeholder="100" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} />
-                  </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">默认时长(分钟)</label>
+                  <Input type="number" placeholder="60" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: e.target.value })} />
                 </div>
               </div>
               <DialogFooter>
@@ -235,9 +212,7 @@ export default function SubjectsPage() {
                 <TableRow>
                   <TableHead>科目名称</TableHead>
                   <TableHead>分类</TableHead>
-                  <TableHead>授课模式</TableHead>
                   <TableHead className="hidden sm:table-cell">默认时长</TableHead>
-                  <TableHead>课时单价</TableHead>
                   <TableHead className="hidden sm:table-cell">所属俱乐部</TableHead>
                   <TableHead>操作</TableHead>
                 </TableRow>
@@ -247,13 +222,7 @@ export default function SubjectsPage() {
                   <TableRow key={subject.id}>
                     <TableCell className="font-medium">{subject.name}</TableCell>
                     <TableCell>{subject.category}</TableCell>
-                    <TableCell>
-                      <Badge variant={subject.teachingMode === 'private' ? 'default' : subject.teachingMode === 'duo' ? 'secondary' : 'outline'}>
-                        {subject.teachingMode === 'private' ? '一对一' : subject.teachingMode === 'duo' ? '一对二' : '一对多'}
-                      </Badge>
-                    </TableCell>
                     <TableCell className="hidden sm:table-cell">{subject.durationMinutes}分钟</TableCell>
-                    <TableCell>¥{subject.price}</TableCell>
                     <TableCell className="hidden sm:table-cell">{subject.club}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">

@@ -98,29 +98,38 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   // 用事务按正确顺序清理关联记录
   await prisma.$transaction(async (tx) => {
-    // 1. 结算明细依赖课时，先删结算明细
-    const lessons = await tx.lesson.findMany({ where: { coachId: userId }, select: { id: true } })
-    const lessonIds = lessons.map(l => l.id)
+    // 1. 先解除该用户确认过的课时的外键（confirmedById → User）
+    await tx.lesson.updateMany({ where: { confirmedById: userId }, data: { confirmedById: null } })
+
+    // 2. 结算明细依赖课时，先删结算明细
+    const lessonsAsCoach = await tx.lesson.findMany({ where: { coachId: userId }, select: { id: true } })
+    const lessonIds = lessonsAsCoach.map(l => l.id)
     if (lessonIds.length > 0) {
       await tx.settlementItem.deleteMany({ where: { lessonId: { in: lessonIds } } })
     }
-    // 2. 删除课时记录
+    // 3. 删除该用户作为教练的课时记录
     await tx.lesson.deleteMany({ where: { coachId: userId } })
-    // 3. 课程学生关联依赖课程
+
+    // 4. 处理该用户创建或执教的课程
     const courses = await tx.course.findMany({ where: { OR: [{ coachId: userId }, { createdBy: userId }] }, select: { id: true } })
     const courseIds = courses.map(c => c.id)
     if (courseIds.length > 0) {
+      // 先清理这些课程下的课时中该用户确认过的记录
+      await tx.lesson.updateMany({ where: { courseId: { in: courseIds }, confirmedById: userId }, data: { confirmedById: null } })
       await tx.courseStudent.deleteMany({ where: { courseId: { in: courseIds } } })
       await tx.lesson.deleteMany({ where: { courseId: { in: courseIds } } })
       await tx.course.deleteMany({ where: { id: { in: courseIds } } })
     }
-    // 4. 清理其他关联
+
+    // 5. 清理其他关联
     await tx.coachPrice.deleteMany({ where: { coachId: userId } })
     await tx.clubMember.deleteMany({ where: { userId } })
-    // 5. 解除学员和俱乐部的关联
+
+    // 6. 解除学员和俱乐部的关联
     await tx.student.updateMany({ where: { coachId: userId }, data: { coachId: null } })
     await tx.club.updateMany({ where: { adminId: userId }, data: { adminId: null } })
-    // 6. 最后删除用户
+
+    // 7. 最后删除用户
     await tx.user.delete({ where: { id: userId } })
   })
 
