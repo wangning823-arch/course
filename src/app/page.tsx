@@ -202,51 +202,59 @@ export default function HomePage() {
         </div>
       ) : (
         /* 教练和俱乐部管理员 - 业务统计 */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">今日课程</p>
-                  <p className="text-2xl font-bold mt-1">{stats.todayCourses}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Link href="/schedule">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-blue-500" />
+                  <div>
+                    <p className="text-xs text-gray-500">今日课程</p>
+                    <p className="text-lg font-bold">{stats.todayCourses}</p>
+                  </div>
                 </div>
-                <Calendar className="h-12 w-12 text-blue-500 opacity-30" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">本月课时</p>
-                  <p className="text-2xl font-bold mt-1">{stats.weekLessons}</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/lessons">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <Timer className="h-5 w-5 text-green-500" />
+                  <div>
+                    <p className="text-xs text-gray-500">本月课时</p>
+                    <p className="text-lg font-bold">{stats.weekLessons}</p>
+                  </div>
                 </div>
-                <Timer className="h-12 w-12 text-green-500 opacity-30" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">活跃学员</p>
-                  <p className="text-2xl font-bold mt-1">{stats.activeStudents}</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/students">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-yellow-500" />
+                  <div>
+                    <p className="text-xs text-gray-500">活跃学员</p>
+                    <p className="text-lg font-bold">{stats.activeStudents}</p>
+                  </div>
                 </div>
-                <Users className="h-12 w-12 text-yellow-500 opacity-30" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">本月收入</p>
-                  <p className="text-2xl font-bold mt-1">¥{stats.monthIncome.toLocaleString()}</p>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/statistics">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-red-500" />
+                  <div>
+                    <p className="text-xs text-gray-500">本月收入</p>
+                    <p className="text-lg font-bold">¥{stats.monthIncome.toLocaleString()}</p>
+                  </div>
                 </div>
-                <DollarSign className="h-12 w-12 text-red-500 opacity-30" />
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
       )}
 

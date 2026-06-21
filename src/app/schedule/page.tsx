@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronLeft, ChevronRight, Plus, Trash2, Edit } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, Edit, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -69,6 +69,8 @@ export default function SchedulePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [detailDialogOpen, setDetailDialogOpen] = React.useState(false)
   const [selectedCourse, setSelectedCourse] = React.useState<CourseData | null>(null)
+  const [courseRecorded, setCourseRecorded] = React.useState(false)
+  const [recording, setRecording] = React.useState(false)
 
   // 下拉选项数据
   const [subjects, setSubjects] = React.useState<Subject[]>([])
@@ -243,6 +245,37 @@ export default function SchedulePage() {
       loadCourses()
     } catch (e) {
       alert('删除失败')
+    }
+  }
+
+  // 检查课程是否已记录课时
+  const checkCourseRecorded = async (courseId: number) => {
+    try {
+      const res = await fetch(`/api/courses/${courseId}/lessons`)
+      const data = await res.json()
+      setCourseRecorded(data.recorded)
+    } catch {
+      setCourseRecorded(false)
+    }
+  }
+
+  // 记录课时
+  const handleRecordLesson = async () => {
+    if (!selectedCourse) return
+    setRecording(true)
+    try {
+      const res = await fetch(`/api/courses/${selectedCourse.id}/lessons`, { method: 'POST' })
+      const data = await res.json()
+      if (res.ok) {
+        setCourseRecorded(true)
+        alert(`已成功记录 ${data.count} 条课时`)
+      } else {
+        alert(data.error || '记录失败')
+      }
+    } catch {
+      alert('记录课时失败')
+    } finally {
+      setRecording(false)
     }
   }
 
@@ -582,6 +615,7 @@ export default function SchedulePage() {
                             onClick={() => {
                               setSelectedCourse(course)
                               setDetailDialogOpen(true)
+                              checkCourseRecorded(course.id)
                             }}
                           >
                             <div className="font-medium truncate px-0.5">{course.subject}</div>
@@ -633,9 +667,15 @@ export default function SchedulePage() {
                   <span>{selectedCourse.students}</span>
                 </div>
               )}
+              {courseRecorded && (
+                <div className="flex items-center gap-1 text-green-600 text-xs mt-1">
+                  <Clock className="h-3 w-3" />
+                  <span>已记录课时</span>
+                </div>
+              )}
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>关闭</Button>
             <Button
               variant="destructive"
@@ -645,6 +685,12 @@ export default function SchedulePage() {
               }}
             >
               取消课程
+            </Button>
+            <Button
+              disabled={courseRecorded || recording}
+              onClick={handleRecordLesson}
+            >
+              {recording ? '记录中...' : courseRecorded ? '已记录课时' : '记录课时'}
             </Button>
           </DialogFooter>
         </DialogContent>
