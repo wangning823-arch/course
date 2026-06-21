@@ -3,11 +3,11 @@
 import * as React from 'react'
 import { ChevronLeft, ChevronRight, Plus, Trash2, Edit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 import { ClubSelector } from '@/components/club-selector'
 
 // 本地日期格式化（避免时区偏移）
@@ -253,7 +253,10 @@ export default function SchedulePage() {
     })
   }
 
-  // 将课程映射到日历网格
+  // 每小时高度（px）
+  const HOUR_HEIGHT = 48
+
+  // 获取某天某个时段的课程
   const getCourseAt = (dayIdx: number, hour: number) => {
     const dateStr = getLocalDateStr(weekDates[dayIdx])
     return courses.find((c) => {
@@ -263,12 +266,37 @@ export default function SchedulePage() {
     })
   }
 
-  // 计算课程高度（分钟 → px，1小时=48px）
-  const getCourseHeight = (course: CourseData) => {
+  // 获取某天某个时段开始的所有课程
+  const getCoursesStartingAt = (dayIdx: number, hour: number): CourseData[] => {
+    const dateStr = getLocalDateStr(weekDates[dayIdx])
+    return courses.filter((c) => {
+      if (c.date !== dateStr) return false
+      const startHour = parseInt(c.startTime.split(':')[0])
+      return startHour === hour
+    })
+  }
+
+  // 判断两门课程是否有时间重叠
+  const coursesOverlap = (a: CourseData, b: CourseData): boolean => {
+    return a.startTime < b.endTime && b.startTime < a.endTime
+  }
+
+  // 获取某天某个时段所有活跃课程（已开始但未结束）
+  const getActiveCoursesAt = (dayIdx: number, hour: number): CourseData[] => {
+    const dateStr = getLocalDateStr(weekDates[dayIdx])
+    return courses.filter((c) => {
+      if (c.date !== dateStr) return false
+      return c.startTime <= `${String(hour).padStart(2, '0')}:00` &&
+             c.endTime > `${String(hour).padStart(2, '0')}:00`
+    })
+  }
+
+  // 计算课程跨几行（小时数）
+  const getCourseRowSpan = (course: CourseData) => {
     const [sh, sm] = course.startTime.split(':').map(Number)
     const [eh, em] = course.endTime.split(':').map(Number)
     const minutes = (eh * 60 + em) - (sh * 60 + sm)
-    return Math.max((minutes / 60) * 48, 24)
+    return Math.max(Math.ceil(minutes / 60), 1)
   }
 
   // 根据课程 ID 分配颜色
@@ -438,33 +466,54 @@ export default function SchedulePage() {
       </div>
 
       {/* Calendar Grid */}
-      <Card className="overflow-hidden">
+      <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px]">
-              <thead>
-                <tr className="border-b">
-                  <th className="w-16 p-2 text-xs text-gray-500"></th>
-                  {weekDates.map((d, i) => (
-                    <th key={i} className={`p-2 text-center text-xs ${isToday(d) ? 'text-blue-500 font-bold' : 'text-gray-500'}`}>
-                      <div>{dayNames[i]}</div>
-                      <div className="text-lg">{d.getDate()}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {hours.map((hour) => (
-                  <tr key={hour} className="border-b last:border-0">
-                    <td className="p-2 text-xs text-gray-400 text-right pr-3">{hour}:00</td>
-                    {weekDates.map((_, dayIdx) => {
-                      const course = getCourseAt(dayIdx, hour)
-                      return (
-                        <td key={dayIdx} className="p-1 border-l relative">
-                          {course && (
+          <table className="w-full" style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '36px' }} />
+            </colgroup>
+            <thead>
+              <tr className="border-b">
+                <th className="p-1 text-[10px] text-gray-500"></th>
+                {weekDates.map((d, i) => (
+                  <th key={i} className={`p-1 text-center text-xs ${isToday(d) ? 'text-blue-500 font-bold' : 'text-gray-500'}`}>
+                    <div className="text-[10px]">{dayNames[i]}</div>
+                    <div>{d.getDate()}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {hours.map((hour) => {
+                // 跟踪哪些天的当前小时已被 rowSpan 占用
+                const covered = new Set<number>()
+                const cells: React.ReactNode[] = []
+
+                weekDates.forEach((_, dayIdx) => {
+                  if (covered.has(dayIdx)) return
+
+                  const starting = getCoursesStartingAt(dayIdx, hour)
+                  if (starting.length === 0) {
+                    cells.push(<td key={dayIdx}></td>)
+                    return
+                  }
+
+                  // 检测哪些课程与已有活跃课程重叠
+                  const active = getActiveCoursesAt(dayIdx, hour)
+                  const overlapping = starting.filter(s => active.some(a => a.id !== s.id && coursesOverlap(a, s)))
+                  const nonOverlapping = starting.filter(s => !active.some(a => a.id !== s.id && coursesOverlap(a, s)))
+
+                  if (overlapping.length > 0) {
+                    // 重叠课程：并排显示在一个单元格内
+                    const width = `${100 / overlapping.length}%`
+                    cells.push(
+                      <td key={dayIdx} className="p-px align-top">
+                        <div className="flex" style={{ height: `${HOUR_HEIGHT - 4}px` }}>
+                          {overlapping.map((course) => (
                             <div
-                              className={`${getCourseColor(course.id)} text-white text-xs p-1.5 rounded cursor-pointer hover:opacity-90 transition-opacity`}
-                              style={{ height: `${getCourseHeight(course) - 4}px` }}
+                              key={course.id}
+                              className={`${getCourseColor(course.id)} text-white text-[10px] leading-tight p-px px-0.5 rounded cursor-pointer hover:opacity-90 transition-opacity overflow-hidden`}
+                              style={{ width, height: '100%' }}
                               onClick={() => {
                                 setSelectedCourse(course)
                                 setDeleteDialogOpen(true)
@@ -472,19 +521,50 @@ export default function SchedulePage() {
                             >
                               <div className="font-medium truncate">{course.subject}</div>
                               <div className="opacity-80 truncate">{course.coach}</div>
-                              {course.students && (
-                                <div className="opacity-70 truncate text-[10px] mt-0.5">{course.students}</div>
-                              )}
                             </div>
+                          ))}
+                        </div>
+                      </td>
+                    )
+                  } else {
+                    // 非重叠课程：使用 rowSpan
+                    const course = nonOverlapping[0]
+                    const rowSpan = getCourseRowSpan(course)
+                    cells.push(
+                      <td
+                        key={dayIdx}
+                        rowSpan={rowSpan}
+                        className="p-px align-top"
+                        style={{ height: `${rowSpan * HOUR_HEIGHT}px` }}
+                      >
+                        <div
+                          className={`${getCourseColor(course.id)} text-white text-[10px] leading-tight p-px px-0.5 rounded cursor-pointer hover:opacity-90 transition-opacity overflow-hidden`}
+                          style={{ height: `${rowSpan * HOUR_HEIGHT - 4}px` }}
+                          onClick={() => {
+                            setSelectedCourse(course)
+                            setDeleteDialogOpen(true)
+                          }}
+                        >
+                          <div className="font-medium truncate">{course.subject}</div>
+                          <div className="opacity-80 truncate">{course.coach}</div>
+                          {course.students && (
+                            <div className="opacity-70 truncate">{course.students}</div>
                           )}
-                        </td>
-                      )
-                    })}
+                        </div>
+                      </td>
+                    )
+                  }
+                })
+
+                return (
+                  <tr key={hour} className="border-b last:border-0" style={{ height: `${HOUR_HEIGHT}px` }}>
+                    <td className="p-0.5 text-[10px] text-gray-400 text-right pr-1 align-top">{hour}</td>
+                    {cells}
                   </tr>
-                ))}
-              </tbody>
+                )
+              })}
+            </tbody>
             </table>
-          </div>
           {loading && (
             <div className="text-center py-4 text-sm text-gray-500">加载中...</div>
           )}

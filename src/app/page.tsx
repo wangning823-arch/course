@@ -2,12 +2,13 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { Calendar, Timer, Users, DollarSign, ArrowRight, Building2, UserCog } from 'lucide-react'
+import { Calendar, Timer, Users, DollarSign, ArrowRight, Building2, UserCog, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { ClubSelector } from '@/components/club-selector'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' }> = {
   completed: { label: '已完成', variant: 'success' },
@@ -28,6 +29,8 @@ export default function HomePage() {
     totalUsers: 0,
   })
   const [role, setRole] = React.useState('')
+  const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
+  const [selectedCourse, setSelectedCourse] = React.useState<any>(null)
 
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -112,6 +115,24 @@ export default function HomePage() {
       })
       .catch(console.error)
   }, [role])
+
+  const handleCancelCourse = async () => {
+    if (!selectedCourse) return
+
+    try {
+      const res = await fetch(`/api/courses/${selectedCourse.id}`, {
+        method: 'DELETE',
+      })
+
+      if (res.ok) {
+        setCancelDialogOpen(false)
+        setSelectedCourse(null)
+        fetchBusinessData()
+      }
+    } catch (error) {
+      console.error('取消课程失败:', error)
+    }
+  }
 
   // 获取平台数据（系统管理员）
   const fetchPlatformData = React.useCallback(() => {
@@ -267,6 +288,7 @@ export default function HomePage() {
                     <TableHead className="hidden sm:table-cell">学员</TableHead>
                     <TableHead className="hidden md:table-cell">校区</TableHead>
                     <TableHead>状态</TableHead>
+                    <TableHead className="text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -282,6 +304,21 @@ export default function HomePage() {
                           {statusMap[course.status]?.label || course.status}
                         </Badge>
                       </TableCell>
+                      <TableCell className="text-right">
+                        {course.status !== 'cancelled' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => {
+                              setSelectedCourse(course)
+                              setCancelDialogOpen(true)
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -290,6 +327,22 @@ export default function HomePage() {
           </CardContent>
         </Card>
       )}
+
+      {/* 取消课程确认弹窗 */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>取消课程</DialogTitle>
+            <DialogDescription>
+              确定要取消 {selectedCourse?.subject}（{selectedCourse?.startTime}-{selectedCourse?.endTime}）吗？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>返回</Button>
+            <Button variant="destructive" onClick={handleCancelCourse}>确认取消</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
