@@ -2,12 +2,12 @@
 // 使用 SQLite 开发，生产环境切换到 PostgreSQL
 
 generator client {
-  provider = "prisma-client"
-  output   = "../app/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // 用户表
@@ -31,6 +31,7 @@ model User {
   coachLessons  Lesson[]  @relation("LessonCoach")
   lessonsConfirmed Lesson[] @relation("LessonConfirmer")
   memberships   ClubMember[]
+  coachPrices   CoachPrice[]
 }
 
 // 俱乐部表
@@ -107,8 +108,28 @@ model Subject {
   club            Club     @relation(fields: [clubId], references: [id])
   courses         Course[]
   settlementItems SettlementItem[]
+  coachPrices     CoachPrice[]
 
   @@index([clubId])
+}
+
+// 教练定价表（教练+科目+授课模式 = 价格）
+model CoachPrice {
+  id            Int      @id @default(autoincrement())
+  coachId       Int      // 教练ID
+  subjectId     Int      // 科目ID
+  teachingMode  String   // 授课方式：private=一对一, duo=一对二, group=一对多
+  price         Decimal  // 课时单价(元)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // 关联
+  coach         User     @relation(fields: [coachId], references: [id])
+  subject       Subject  @relation(fields: [subjectId], references: [id])
+
+  @@unique([coachId, subjectId, teachingMode])
+  @@index([coachId])
+  @@index([subjectId])
 }
 
 // 课程表（排课）

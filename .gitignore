@@ -1,10 +1,11 @@
-# Nuxt dev/build outputs
+# Build outputs
 .output
 .data
 .nuxt
 .nitro
 .cache
 dist
+.next
 
 # Node dependencies
 node_modules
@@ -23,4 +24,15 @@ logs
 .env.*
 !.env.example
 
+# Database
+*.db
+*.db-journal
+
+# Package files
+*.tgz
+
+# pnpm lock file (optional, uncomment if needed)
+# pnpm-lock.yaml
+
+# Nuxt generated
 /app/generated/prisma
