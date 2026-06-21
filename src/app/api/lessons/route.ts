@@ -43,8 +43,8 @@ export async function GET(request: NextRequest) {
   })
 
   const data = lessons.map((l) => {
-    // 本地日期格式化
-    const d = new Date(l.createdAt)
+    // 使用课程的上课日期，而不是课时记录的创建时间
+    const d = l.course?.scheduledDate ? new Date(l.course.scheduledDate) : new Date(l.createdAt)
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     return {
       id: l.id,
@@ -85,10 +85,10 @@ export async function POST(request: NextRequest) {
 
   let finalCourseId = courseId ? parseInt(courseId) : null
 
-  // 解析日期字符串为本地日期（避免时区偏移）
+  // 解析日期字符串，存储为UTC午夜（避免时区偏移导致日期变化）
   const parseLocalDate = (dateStr: string) => {
     const [year, month, day] = dateStr.split('-').map(Number)
-    return new Date(year, month - 1, day)
+    return new Date(Date.UTC(year, month - 1, day))
   }
 
   // 如果没有选择课程，自动创建一个临时课程

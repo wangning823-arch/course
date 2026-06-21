@@ -13,12 +13,12 @@ export async function GET(request: NextRequest) {
   const where: any = {}
   if (clubId) where.clubId = parseInt(clubId)
   if (startDate && endDate) {
-    // 本地日期字符串转为当天开始和结束的时间范围
-    const start = new Date(startDate + 'T00:00:00')
-    const end = new Date(endDate + 'T23:59:59')
+    // 日期字符串转为UTC时间范围（与存储格式一致）
+    const [sy, sm, sd] = startDate.split('-').map(Number)
+    const [ey, em, ed] = endDate.split('-').map(Number)
     where.scheduledDate = {
-      gte: start,
-      lte: end,
+      gte: new Date(Date.UTC(sy, sm - 1, sd)),
+      lte: new Date(Date.UTC(ey, em - 1, ed, 23, 59, 59)),
     }
   }
   if (coachId) where.coachId = parseInt(coachId)
@@ -75,10 +75,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '请填写完整信息' }, { status: 400 })
   }
 
-  // 解析日期字符串为本地日期（避免时区偏移）
+  // 解析日期字符串，存储为UTC午夜（避免时区偏移导致日期变化）
+  // new Date("2026-06-20") 在 UTC+8 会变成 2026-06-19T16:00:00Z，存入SQLite后读出日期会错
+  // 解决：用本地日期创建，再转为同日UTC午夜的ISO字符串，Prisma存储时不会偏移
   const parseLocalDate = (dateStr: string) => {
     const [year, month, day] = dateStr.split('-').map(Number)
-    return new Date(year, month - 1, day)
+    return new Date(Date.UTC(year, month - 1, day))
   }
   const scheduledDateObj = parseLocalDate(scheduledDate)
 

@@ -105,7 +105,22 @@ export default function LessonsPage() {
       const [courseData, studentData, coachData, subjectData] = await Promise.all([
         courseRes.json(), studentRes.json(), coachRes.json(), subjectRes.json(),
       ])
-      setCourses(courseData)
+
+      // 过滤掉过去的课程，并合并相同课程
+      const today = new Date()
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+      const futureCourses = courseData.filter((c: CourseOption) => c.date >= todayStr)
+
+      // 按科目+教练+日期+时间+学员去重
+      const courseMap = new Map<string, CourseOption>()
+      for (const c of futureCourses) {
+        const sortedStudentIds = [...c.studentIds].sort((a, b) => a - b).join(',')
+        const key = `${c.subjectId}-${c.coachId}-${c.date}-${c.startTime}-${c.endTime}-${sortedStudentIds}`
+        if (!courseMap.has(key)) {
+          courseMap.set(key, c)
+        }
+      }
+      setCourses(Array.from(courseMap.values()))
       setStudents(studentData)
       setSubjects(subjectData)
       // 教练只能选自己
