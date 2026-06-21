@@ -17,7 +17,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const isLoginPage = pathname === '/login'
 
   // 教练不允许访问的管理页面
-  const coachBlockedPaths = ['/admin/users', '/admin/clubs', '/admin/campuses', '/admin/subjects', '/admin/students', '/admin/coach-prices']
+  const coachBlockedPaths = ['/admin/users', '/admin/clubs', '/admin/campuses', '/admin/subjects', '/admin/coach-prices']
+
+  // 系统管理员不允许访问的页面（业务操作和俱乐部级别管理）
+  const superAdminBlockedPaths = ['/schedule', '/lessons', '/admin/campuses', '/admin/subjects', '/admin/coach-prices']
 
   // 检查登录状态 + 设置页面标题
   React.useEffect(() => {
@@ -38,6 +41,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         // 教练不允许访问管理页面，重定向到首页
         if (user.role === 'coach' && coachBlockedPaths.some(p => pathname.startsWith(p))) {
+          router.replace('/')
+          return
+        }
+
+        // 系统管理员不允许访问业务页面和俱乐部管理页面
+        if (user.role === 'super_admin' && superAdminBlockedPaths.some(p => pathname.startsWith(p))) {
           router.replace('/')
           return
         }

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { ClubSelector } from '@/components/club-selector'
 
 // 生成一周的日期
 function getWeekDates(offset: number = 0) {
@@ -79,7 +80,7 @@ export default function SchedulePage() {
     studentIds: [] as number[],
   })
 
-  const weekDates = getWeekDates(weekOffset)
+  const weekDates = React.useMemo(() => getWeekDates(weekOffset), [weekOffset])
   const dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
   const today = new Date()
   const isToday = (d: Date) =>
@@ -94,11 +95,14 @@ export default function SchedulePage() {
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
     try {
+      const studentUrl = user?.role === 'coach' && user?.id
+        ? `/api/students?clubId=${clubId}&coachId=${user.id}`
+        : `/api/students?clubId=${clubId}`
       const [subRes, coachRes, campusRes, studentRes] = await Promise.all([
         fetch(`/api/subjects?clubId=${clubId}`),
         fetch(`/api/users?role=coach&clubId=${clubId}`),
         fetch(`/api/campuses?clubId=${clubId}`),
-        fetch(`/api/students?clubId=${clubId}`),
+        fetch(studentUrl),
       ])
       const [subData, coachData, campusData, studentData] = await Promise.all([
         subRes.json(), coachRes.json(), campusRes.json(), studentRes.json(),
@@ -128,8 +132,9 @@ export default function SchedulePage() {
 
     setLoading(true)
     try {
-      const startDate = weekDates[0].toISOString()
-      const endDate = new Date(weekDates[6].getTime() + 86400000 - 1).toISOString()
+      const dates = getWeekDates(weekOffset)
+      const startDate = dates[0].toISOString()
+      const endDate = new Date(dates[6].getTime() + 86400000 - 1).toISOString()
       let url = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
 
       // 教练只能看自己的课程
@@ -145,7 +150,7 @@ export default function SchedulePage() {
     } finally {
       setLoading(false)
     }
-  }, [weekDates])
+  }, [weekOffset])
 
   React.useEffect(() => {
     loadCourses()
@@ -266,9 +271,11 @@ export default function SchedulePage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">排课管理</h1>
-        <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm() }}>
+        <div className="flex items-center gap-3">
+          <ClubSelector />
+          <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm() }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="h-4 w-4 mr-1" />
@@ -397,6 +404,7 @@ export default function SchedulePage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Week Navigation */}

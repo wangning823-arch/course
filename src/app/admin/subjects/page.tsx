@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ClubSelector } from '@/components/club-selector'
 
 export default function SubjectsPage() {
   const [subjects, setSubjects] = React.useState<any[]>([])
@@ -98,9 +99,11 @@ export default function SubjectsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">科目管理</h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <ClubSelector />
+          <Button variant="outline" onClick={fetchSubjects}>
           <Button variant="outline" onClick={fetchSubjects}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新

@@ -33,6 +33,7 @@ export default function UsersPage() {
   const [editId, setEditId] = React.useState<number | null>(null)
   const [currentUser, setCurrentUser] = React.useState<any>(null)
   const [createdPassword, setCreatedPassword] = React.useState('')
+  const [filterClubId, setFilterClubId] = React.useState<string>('all')
 
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -57,10 +58,13 @@ export default function UsersPage() {
     return currentUser?.role === 'super_admin' || currentUser?.role === 'club_admin'
   }, [currentUser])
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (clubId?: string) => {
     setLoading(true)
     try {
-      const res = await fetch('/api/users')
+      const params = new URLSearchParams()
+      if (clubId) params.set('clubId', clubId)
+      const url = params.toString() ? `/api/users?${params}` : '/api/users'
+      const res = await fetch(url)
       const data = await res.json()
       setUsers(data)
     } catch (error) {
@@ -84,6 +88,11 @@ export default function UsersPage() {
     fetchUsers()
     fetchClubs()
   }, [])
+
+  // 俱乐部筛选变化时重新获取用户
+  React.useEffect(() => {
+    fetchUsers(filterClubId === 'all' ? '' : filterClubId)
+  }, [filterClubId])
 
   const handleSubmit = async () => {
     try {
@@ -114,7 +123,7 @@ export default function UsersPage() {
       setDialogOpen(false)
       setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'coach', password: '', clubId: '' })
       setEditId(null)
-      fetchUsers()
+      fetchUsers(filterClubId === 'all' ? '' : filterClubId)
     } catch (error) {
       console.error('操作失败:', error)
     }
@@ -124,7 +133,7 @@ export default function UsersPage() {
     if (!confirm('确定要删除该用户吗？')) return
     try {
       await fetch(`/api/users/${id}`, { method: 'DELETE' })
-      fetchUsers()
+      fetchUsers(filterClubId === 'all' ? '' : filterClubId)
     } catch (error) {
       console.error('删除失败:', error)
     }
@@ -141,10 +150,21 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">用户管理</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchUsers}>
+        <div className="flex items-center gap-2">
+          <Select value={filterClubId} onValueChange={setFilterClubId}>
+            <SelectTrigger className="w-full sm:w-[180px] h-9">
+              <SelectValue placeholder="全部俱乐部" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部俱乐部</SelectItem>
+              {clubs.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={() => fetchUsers(filterClubId === 'all' ? '' : filterClubId)}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新
           </Button>

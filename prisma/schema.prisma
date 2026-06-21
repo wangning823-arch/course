@@ -32,6 +32,7 @@ model User {
   lessonsConfirmed Lesson[] @relation("LessonConfirmer")
   memberships   ClubMember[]
   coachPrices   CoachPrice[]
+  coachStudents Student[]    @relation("CoachStudents")
 }
 
 // 俱乐部表
@@ -57,6 +58,7 @@ model Club {
   settlements   Settlement[]
   members       ClubMember[]
   coachPrices   CoachPrice[]
+  students      Student[]
 }
 
 // 校区表
@@ -184,6 +186,8 @@ model CourseStudent {
 // 学员表（仅录入，学员不使用系统）
 model Student {
   id        Int      @id @default(autoincrement())
+  clubId    Int      // 所属俱乐部
+  coachId   Int?     // 私有教练ID，null=俱乐部共享，有值=仅该教练可见
   name      String   // 姓名
   phone     String?  // 联系电话
   gender    Int?     // 性别：0未知 1男 2女
@@ -196,9 +200,14 @@ model Student {
   updatedAt DateTime @updatedAt
 
   // 关联
-  courses   CourseStudent[]
-  lessons   Lesson[]
+  club            Club      @relation(fields: [clubId], references: [id])
+  coach           User?     @relation("CoachStudents", fields: [coachId], references: [id])
+  courses         CourseStudent[]
+  lessons         Lesson[]
   settlementItems SettlementItem[]
+
+  @@index([clubId])
+  @@index([coachId])
 }
 
 // 课时记录表

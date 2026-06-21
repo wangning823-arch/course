@@ -25,6 +25,7 @@ const coachMenuItems = [
   { icon: Calendar, label: '排课管理', href: '/schedule' },
   { icon: Timer, label: '课时记录', href: '/lessons' },
   { icon: BarChart3, label: '课时统计', href: '/statistics' },
+  { icon: GraduationCap, label: '学员管理', href: '/admin/students' },
 ]
 
 // 管理员角色菜单（club_admin + super_admin）
@@ -37,12 +38,10 @@ const adminMenuItems = [
 // 系统管理菜单
 const systemAdminItems = {
   super_admin: [
+    { icon: BarChart3, label: '统计概览', href: '/statistics' },
+    { icon: GraduationCap, label: '学员查看', href: '/admin/students' },
     { icon: Users, label: '用户管理', href: '/admin/users' },
     { icon: Building2, label: '俱乐部管理', href: '/admin/clubs' },
-    { icon: MapPin, label: '校区管理', href: '/admin/campuses' },
-    { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
-    { icon: GraduationCap, label: '学员管理', href: '/admin/students' },
-    { icon: DollarSign, label: '教练定价', href: '/admin/coach-prices' },
   ],
   club_admin: [
     { icon: Users, label: '用户管理', href: '/admin/users' },
@@ -80,6 +79,7 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
   // 根据角色选择菜单
   const getMainItems = () => {
     if (role === 'coach') return [...mainMenuItems, ...coachMenuItems]
+    if (role === 'super_admin') return mainMenuItems // 系统管理员只有首页
     return [...mainMenuItems, ...adminMenuItems]
   }
 

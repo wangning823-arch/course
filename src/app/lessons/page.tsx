@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ClubSelector } from '@/components/club-selector'
 
 const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' }> = {
   pending: { label: '待确认', variant: 'warning' },
@@ -84,9 +85,12 @@ export default function LessonsPage() {
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
     try {
+      const studentUrl = user?.role === 'coach' && user?.id
+        ? `/api/students?clubId=${clubId}&coachId=${user.id}`
+        : `/api/students?clubId=${clubId}`
       const [courseRes, studentRes, coachRes] = await Promise.all([
         fetch(`/api/courses?clubId=${clubId}${user?.role === 'coach' && user?.id ? `&coachId=${user.id}` : ''}`),
-        fetch(`/api/students?clubId=${clubId}`),
+        fetch(studentUrl),
         fetch(`/api/users?role=coach&clubId=${clubId}`),
       ])
       const [courseData, studentData, coachData] = await Promise.all([
@@ -278,7 +282,9 @@ export default function LessonsPage() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">课时记录</h1>
-        <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm() }}>
+        <div className="flex items-center gap-3">
+          <ClubSelector />
+          <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm() }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="h-4 w-4 mr-1" />
@@ -379,6 +385,7 @@ export default function LessonsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card>

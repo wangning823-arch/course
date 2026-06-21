@@ -2,18 +2,12 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { Calendar, Timer, Users, DollarSign, ArrowRight } from 'lucide-react'
+import { Calendar, Timer, Users, DollarSign, ArrowRight, Building2, UserCog } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-
-const allQuickActions = [
-  { label: '排课管理', href: '/schedule', color: 'bg-blue-500 hover:bg-blue-600' },
-  { label: '记录课时', href: '/lessons', color: 'bg-green-500 hover:bg-green-600' },
-  { label: '查看统计', href: '/statistics', color: 'bg-yellow-500 hover:bg-yellow-600' },
-  { label: '学员管理', href: '/admin/students', color: 'bg-purple-500 hover:bg-purple-600', adminOnly: true },
-]
+import { ClubSelector } from '@/components/club-selector'
 
 const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' }> = {
   completed: { label: '已完成', variant: 'success' },
@@ -29,6 +23,10 @@ export default function HomePage() {
     activeStudents: 0,
     monthIncome: 0,
   })
+  const [platformStats, setPlatformStats] = React.useState({
+    totalClubs: 0,
+    totalUsers: 0,
+  })
   const [role, setRole] = React.useState('')
 
   React.useEffect(() => {
@@ -39,21 +37,46 @@ export default function HomePage() {
     }
   }, [])
 
-  // 根据角色过滤快捷操作
-  const quickActions = allQuickActions.filter((a) => {
-    if (a.adminOnly && role === 'coach') return false
-    return true
-  })
+  // 教练的快捷操作
+  const coachQuickActions = [
+    { label: '排课管理', href: '/schedule', color: 'bg-blue-500 hover:bg-blue-600' },
+    { label: '记录课时', href: '/lessons', color: 'bg-green-500 hover:bg-green-600' },
+    { label: '查看统计', href: '/statistics', color: 'bg-yellow-500 hover:bg-yellow-600' },
+    { label: '学员管理', href: '/admin/students', color: 'bg-purple-500 hover:bg-purple-600' },
+  ]
 
-  const fetchData = React.useCallback(() => {
+  // 俱乐部管理员的快捷操作
+  const adminQuickActions = [
+    { label: '排课管理', href: '/schedule', color: 'bg-blue-500 hover:bg-blue-600' },
+    { label: '记录课时', href: '/lessons', color: 'bg-green-500 hover:bg-green-600' },
+    { label: '查看统计', href: '/statistics', color: 'bg-yellow-500 hover:bg-yellow-600' },
+    { label: '学员管理', href: '/admin/students', color: 'bg-purple-500 hover:bg-purple-600' },
+  ]
+
+  // 系统管理员的快捷操作
+  const superAdminQuickActions = [
+    { label: '统计概览', href: '/statistics', color: 'bg-blue-500 hover:bg-blue-600' },
+    { label: '学员查看', href: '/admin/students', color: 'bg-green-500 hover:bg-green-600' },
+    { label: '俱乐部管理', href: '/admin/clubs', color: 'bg-purple-500 hover:bg-purple-600' },
+    { label: '用户管理', href: '/admin/users', color: 'bg-yellow-500 hover:bg-yellow-600' },
+  ]
+
+  const getQuickActions = () => {
+    if (role === 'coach') return coachQuickActions
+    if (role === 'super_admin') return superAdminQuickActions
+    return adminQuickActions
+  }
+
+  // 获取业务数据（教练和俱乐部管理员）
+  const fetchBusinessData = React.useCallback(() => {
+    if (role === 'super_admin') return
+
     const clubId = localStorage.getItem('currentClubId')
     if (!clubId) return
 
-    // 获取当前用户信息
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
 
-    // 构建课程查询参数
     const today = new Date()
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
@@ -61,13 +84,11 @@ export default function HomePage() {
     let courseUrl = `/api/courses?clubId=${clubId}&startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`
     let statsUrl = `/api/statistics?clubId=${clubId}&period=month`
 
-    // 教练只能看自己的数据
     if (user?.role === 'coach' && user?.id) {
       courseUrl += `&coachId=${user.id}`
       statsUrl += `&coachId=${user.id}`
     }
 
-    // 获取今日课程
     fetch(courseUrl)
       .then((res) => res.json())
       .then((data) => {
@@ -76,7 +97,6 @@ export default function HomePage() {
       })
       .catch(console.error)
 
-    // 获取统计数据
     fetch(statsUrl)
       .then((res) => res.json())
       .then((data) => {
@@ -88,70 +108,125 @@ export default function HomePage() {
         }))
       })
       .catch(console.error)
-  }, [])
+  }, [role])
+
+  // 获取平台数据（系统管理员）
+  const fetchPlatformData = React.useCallback(() => {
+    if (role !== 'super_admin') return
+
+    Promise.all([
+      fetch('/api/clubs').then((res) => res.json()),
+      fetch('/api/users').then((res) => res.json()),
+    ])
+      .then(([clubs, users]) => {
+        setPlatformStats({
+          totalClubs: clubs.length,
+          totalUsers: users.length,
+        })
+      })
+      .catch(console.error)
+  }, [role])
 
   React.useEffect(() => {
-    fetchData()
+    fetchBusinessData()
+    fetchPlatformData()
 
-    // 监听俱乐部切换事件
-    const handleClubChanged = () => fetchData()
+    const handleClubChanged = () => {
+      fetchBusinessData()
+      fetchPlatformData()
+    }
     window.addEventListener('clubChanged', handleClubChanged)
     return () => window.removeEventListener('clubChanged', handleClubChanged)
-  }, [fetchData])
+  }, [fetchBusinessData, fetchPlatformData])
+
+  const quickActions = getQuickActions()
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">欢迎使用俱乐部课时管理系统</h1>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">今日课程</p>
-                <p className="text-2xl font-bold mt-1">{stats.todayCourses}</p>
-              </div>
-              <Calendar className="h-12 w-12 text-blue-500 opacity-30" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">本月课时</p>
-                <p className="text-2xl font-bold mt-1">{stats.weekLessons}</p>
-              </div>
-              <Timer className="h-12 w-12 text-green-500 opacity-30" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">活跃学员</p>
-                <p className="text-2xl font-bold mt-1">{stats.activeStudents}</p>
-              </div>
-              <Users className="h-12 w-12 text-yellow-500 opacity-30" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">本月收入</p>
-                <p className="text-2xl font-bold mt-1">¥{stats.monthIncome.toLocaleString()}</p>
-              </div>
-              <DollarSign className="h-12 w-12 text-red-500 opacity-30" />
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">
+          {role === 'super_admin' ? '系统管理平台' : '欢迎使用俱乐部课时管理系统'}
+        </h1>
+        {role !== 'super_admin' && <ClubSelector />}
       </div>
 
-      {/* Quick Actions */}
+      {/* 系统管理员 - 平台统计 */}
+      {role === 'super_admin' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">俱乐部总数</p>
+                  <p className="text-2xl font-bold mt-1">{platformStats.totalClubs}</p>
+                </div>
+                <Building2 className="h-12 w-12 text-blue-500 opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">用户总数</p>
+                  <p className="text-2xl font-bold mt-1">{platformStats.totalUsers}</p>
+                </div>
+                <UserCog className="h-12 w-12 text-green-500 opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        /* 教练和俱乐部管理员 - 业务统计 */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">今日课程</p>
+                  <p className="text-2xl font-bold mt-1">{stats.todayCourses}</p>
+                </div>
+                <Calendar className="h-12 w-12 text-blue-500 opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">本月课时</p>
+                  <p className="text-2xl font-bold mt-1">{stats.weekLessons}</p>
+                </div>
+                <Timer className="h-12 w-12 text-green-500 opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">活跃学员</p>
+                  <p className="text-2xl font-bold mt-1">{stats.activeStudents}</p>
+                </div>
+                <Users className="h-12 w-12 text-yellow-500 opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">本月收入</p>
+                  <p className="text-2xl font-bold mt-1">¥{stats.monthIncome.toLocaleString()}</p>
+                </div>
+                <DollarSign className="h-12 w-12 text-red-500 opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* 快捷操作 */}
       <Card>
         <CardHeader>
           <CardTitle>快捷操作</CardTitle>
@@ -170,46 +245,48 @@ export default function HomePage() {
         </CardContent>
       </Card>
 
-      {/* Today's Courses */}
-      <Card>
-        <CardHeader>
-          <CardTitle>今日课程</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {courses.length === 0 ? (
-            <p className="text-center text-gray-500 py-8">暂无今日课程</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>科目</TableHead>
-                  <TableHead>教练</TableHead>
-                  <TableHead className="hidden sm:table-cell">学员</TableHead>
-                  <TableHead className="hidden md:table-cell">校区</TableHead>
-                  <TableHead>状态</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {courses.map((course) => (
-                  <TableRow key={course.id}>
-                    <TableCell className="font-medium">{course.startTime}-{course.endTime}</TableCell>
-                    <TableCell>{course.subject}</TableCell>
-                    <TableCell>{course.coach}</TableCell>
-                    <TableCell className="hidden sm:table-cell">{course.students}</TableCell>
-                    <TableCell className="hidden md:table-cell">{course.campus}</TableCell>
-                    <TableCell>
-                      <Badge variant={statusMap[course.status]?.variant || 'default'}>
-                        {statusMap[course.status]?.label || course.status}
-                      </Badge>
-                    </TableCell>
+      {/* 今日课程 - 仅教练和俱乐部管理员 */}
+      {role !== 'super_admin' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>今日课程</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {courses.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">暂无今日课程</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>时间</TableHead>
+                    <TableHead>科目</TableHead>
+                    <TableHead>教练</TableHead>
+                    <TableHead className="hidden sm:table-cell">学员</TableHead>
+                    <TableHead className="hidden md:table-cell">校区</TableHead>
+                    <TableHead>状态</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {courses.map((course) => (
+                    <TableRow key={course.id}>
+                      <TableCell className="font-medium">{course.startTime}-{course.endTime}</TableCell>
+                      <TableCell>{course.subject}</TableCell>
+                      <TableCell>{course.coach}</TableCell>
+                      <TableCell className="hidden sm:table-cell">{course.students}</TableCell>
+                      <TableCell className="hidden md:table-cell">{course.campus}</TableCell>
+                      <TableCell>
+                        <Badge variant={statusMap[course.status]?.variant || 'default'}>
+                          {statusMap[course.status]?.label || course.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

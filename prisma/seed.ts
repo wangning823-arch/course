@@ -154,6 +154,7 @@ async function main() {
   // 创建学员
   const student1 = await prisma.student.create({
     data: {
+      clubId: club.id,
       name: '李明',
       phone: '13900000001',
       gender: 1,
@@ -164,6 +165,7 @@ async function main() {
 
   const student2 = await prisma.student.create({
     data: {
+      clubId: club.id,
       name: '王强',
       phone: '13900000002',
       gender: 1,
@@ -174,6 +176,8 @@ async function main() {
 
   const student3 = await prisma.student.create({
     data: {
+      clubId: club.id,
+      coachId: coach1.id,  // 陈静是张教练的私有学员
       name: '陈静',
       phone: '13900000003',
       gender: 2,
