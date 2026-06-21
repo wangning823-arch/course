@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClubSelector } from '@/components/club-selector'
+import { authFetch } from '@/lib/fetch-client'
 
 export default function SubjectsPage() {
   const [subjects, setSubjects] = React.useState<any[]>([])
@@ -21,13 +22,26 @@ export default function SubjectsPage() {
     durationMinutes: '60', price: '',
   })
   const [editId, setEditId] = React.useState<number | null>(null)
+  const [role, setRole] = React.useState('')
+  const [userClubId, setUserClubId] = React.useState('')
+
+  React.useEffect(() => {
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      const user = JSON.parse(stored)
+      setRole(user.role || '')
+      if (user.clubId) setUserClubId(String(user.clubId))
+    }
+  }, [])
+
+  const isClubAdmin = role === 'club_admin'
 
   const fetchSubjects = async () => {
     setLoading(true)
     try {
-      const clubId = localStorage.getItem('currentClubId')
+      const clubId = isClubAdmin ? userClubId : localStorage.getItem('currentClubId')
       const url = clubId ? `/api/subjects?clubId=${clubId}` : '/api/subjects'
-      const res = await fetch(url)
+      const res = await authFetch(url)
       const data = await res.json()
       setSubjects(data)
     } catch (error) {
@@ -39,7 +53,14 @@ export default function SubjectsPage() {
 
   const fetchClubs = async () => {
     try {
-      const res = await fetch('/api/clubs')
+      // 俱乐部管理员只需要自己的俱乐部
+      if (isClubAdmin && userClubId) {
+        const res = await authFetch(`/api/clubs/${userClubId}`)
+        const data = await res.json()
+        if (data) setClubs([data])
+        return
+      }
+      const res = await authFetch('/api/clubs')
       const data = await res.json()
       setClubs(data)
     } catch (error) {
@@ -48,9 +69,10 @@ export default function SubjectsPage() {
   }
 
   React.useEffect(() => {
+    if (isClubAdmin && !userClubId) return
     fetchSubjects()
     fetchClubs()
-  }, [])
+  }, [isClubAdmin, userClubId])
 
   // 监听俱乐部切换
   React.useEffect(() => {
@@ -63,17 +85,20 @@ export default function SubjectsPage() {
 
   const handleSubmit = async () => {
     try {
+      // 俱乐部管理员强制用自己的 clubId
+      const submitClubId = isClubAdmin ? userClubId : formData.clubId
+      const submitData = { ...formData, clubId: submitClubId }
       if (editId) {
-        await fetch(`/api/subjects/${editId}`, {
+        await authFetch(`/api/subjects/${editId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(submitData),
         })
       } else {
-        await fetch('/api/subjects', {
+        await authFetch('/api/subjects', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(submitData),
         })
       }
       setDialogOpen(false)
@@ -88,7 +113,7 @@ export default function SubjectsPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除该科目吗？')) return
     try {
-      await fetch(`/api/subjects/${id}`, { method: 'DELETE' })
+      await authFetch(`/api/subjects/${id}`, { method: 'DELETE' })
       fetchSubjects()
     } catch (error) {
       console.error('删除失败:', error)
@@ -97,7 +122,7 @@ export default function SubjectsPage() {
 
   const handleEdit = (subject: any) => {
     setFormData({
-      clubId: '',
+      clubId: isClubAdmin ? userClubId : String(subject.clubId || ''),
       name: subject.name,
       category: subject.category || '球类',
       teachingMode: subject.teachingMode,
@@ -132,14 +157,18 @@ export default function SubjectsPage() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">所属俱乐部</label>
-                  <Select value={formData.clubId} onValueChange={(v) => setFormData({ ...formData, clubId: v })}>
-                    <SelectTrigger><SelectValue placeholder="选择俱乐部" /></SelectTrigger>
-                    <SelectContent>
-                      {clubs.map((club) => (
-                        <SelectItem key={club.id} value={String(club.id)}>{club.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {isClubAdmin ? (
+                    <Input value={clubs.find(c => c.id === parseInt(userClubId))?.name || ''} disabled className="bg-gray-50" />
+                  ) : (
+                    <Select value={formData.clubId} onValueChange={(v) => setFormData({ ...formData, clubId: v })}>
+                      <SelectTrigger><SelectValue placeholder="选择俱乐部" /></SelectTrigger>
+                      <SelectContent>
+                        {clubs.map((club) => (
+                          <SelectItem key={club.id} value={String(club.id)}>{club.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">科目名称</label>

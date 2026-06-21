@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getAuthUser } from '@/lib/auth'
 
 // GET - 获取教练定价列表（按俱乐部过滤）
 export async function GET(request: NextRequest) {
@@ -45,11 +46,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '请填写完整信息' }, { status: 400 })
   }
 
+  // 俱乐部管理员：强制使用自己的 clubId
+  const authUser = await getAuthUser(request)
+  const finalClubId = authUser?.role === 'club_admin' && authUser.clubId
+    ? authUser.clubId
+    : parseInt(clubId)
+
+  if (authUser?.role === 'club_admin' && authUser.clubId !== finalClubId) {
+    return NextResponse.json({ error: '无权在其他俱乐部设置定价' }, { status: 403 })
+  }
+
   // 检查是否已存在同组合的定价
   const existing = await prisma.coachPrice.findUnique({
     where: {
       clubId_coachId_subjectId_teachingMode: {
-        clubId: parseInt(clubId),
+        clubId: finalClubId,
         coachId: parseInt(coachId),
         subjectId: parseInt(subjectId),
         teachingMode,
@@ -58,7 +69,6 @@ export async function POST(request: NextRequest) {
   })
 
   if (existing) {
-    // 更新已有定价
     const updated = await prisma.coachPrice.update({
       where: { id: existing.id },
       data: { price },
@@ -68,7 +78,7 @@ export async function POST(request: NextRequest) {
 
   const priceRecord = await prisma.coachPrice.create({
     data: {
-      clubId: parseInt(clubId),
+      clubId: finalClubId,
       coachId: parseInt(coachId),
       subjectId: parseInt(subjectId),
       teachingMode,

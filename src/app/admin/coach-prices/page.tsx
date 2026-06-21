@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { authFetch } from '@/lib/fetch-client'
 
 const teachingModeLabels: Record<string, string> = {
   private: '一对一',
@@ -40,7 +41,7 @@ export default function CoachPricesPage() {
 
     if (user.role === 'super_admin') {
       // 超管：获取所有俱乐部
-      fetch('/api/clubs').then((res) => res.json()).then((data) => {
+      authFetch('/api/clubs').then((res) => res.json()).then((data) => {
         setClubs(data)
         const saved = localStorage.getItem('currentClubId')
         if (saved && data.some((c: Club) => c.id === parseInt(saved))) {
@@ -62,7 +63,7 @@ export default function CoachPricesPage() {
     if (!selectedClubId) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/coach-prices?clubId=${selectedClubId}`)
+      const res = await authFetch(`/api/coach-prices?clubId=${selectedClubId}`)
       const data = await res.json()
       setPrices(data)
     } catch (error) {
@@ -76,8 +77,8 @@ export default function CoachPricesPage() {
     if (!selectedClubId) return
     try {
       const [coachRes, subjectRes] = await Promise.all([
-        fetch(`/api/users?role=coach&clubId=${selectedClubId}`),
-        fetch(`/api/subjects?clubId=${selectedClubId}`),
+        authFetch(`/api/users?role=coach&clubId=${selectedClubId}`),
+        authFetch(`/api/subjects?clubId=${selectedClubId}`),
       ])
       const [coachData, subjectData] = await Promise.all([coachRes.json(), subjectRes.json()])
       setCoaches(coachData)
@@ -100,7 +101,7 @@ export default function CoachPricesPage() {
       return
     }
     try {
-      const res = await fetch('/api/coach-prices', {
+      const res = await authFetch('/api/coach-prices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -127,7 +128,7 @@ export default function CoachPricesPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除该定价吗？')) return
     try {
-      await fetch(`/api/coach-prices/${id}`, { method: 'DELETE' })
+      await authFetch(`/api/coach-prices/${id}`, { method: 'DELETE' })
       fetchPrices()
     } catch (error) {
       console.error('删除失败:', error)

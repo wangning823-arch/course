@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getAuthUser } from '@/lib/auth'
 
 // GET - 获取学员列表
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const search = searchParams.get('search') || ''
   const clubId = searchParams.get('clubId')
-  const coachId = searchParams.get('coachId') // 当前登录教练的ID
+  const coachId = searchParams.get('coachId')
 
   if (!clubId) {
     return NextResponse.json({ error: '缺少clubId参数' }, { status: 400 })
@@ -26,8 +27,8 @@ export async function GET(request: NextRequest) {
   // 教练视角：只看共享学员(coachId=null) + 自己的私有学员
   if (coachId) {
     where.OR = [
-      { coachId: null },           // 俱乐部共享
-      { coachId: parseInt(coachId) }, // 自己的私有学员
+      { coachId: null },
+      { coachId: parseInt(coachId) },
     ]
   }
 
@@ -54,9 +55,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '请选择俱乐部' }, { status: 400 })
   }
 
+  // 俱乐部管理员：强制使用自己的 clubId
+  const authUser = await getAuthUser(request)
+  const finalClubId = authUser?.role === 'club_admin' && authUser.clubId
+    ? authUser.clubId
+    : parseInt(clubId)
+
+  if (authUser?.role === 'club_admin' && authUser.clubId !== finalClubId) {
+    return NextResponse.json({ error: '无权在其他俱乐部创建学员' }, { status: 403 })
+  }
+
   const student = await prisma.student.create({
     data: {
-      clubId: parseInt(clubId),
+      clubId: finalClubId,
       coachId: coachId ? parseInt(coachId) : null,
       name,
       phone,

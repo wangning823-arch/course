@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { authFetch } from '@/lib/fetch-client'
 
 const roleLabels: Record<string, string> = {
   super_admin: '系统管理员',
@@ -68,20 +69,21 @@ export default function UsersPage() {
     return currentUser?.role === 'club_admin'
   }, [currentUser])
 
-  const fetchUsers = async (clubId?: string) => {
+  const fetchUsers = React.useCallback(async (clubId?: string) => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      // 俱乐部管理员：强制用自己的 clubId
+      // 从 localStorage 实时读取用户信息，确保拿到最新的 clubId
       const stored = localStorage.getItem('user')
       const user = stored ? JSON.parse(stored) : null
       if (user?.role === 'club_admin' && user?.clubId) {
+        // 俱乐部管理员：强制用自己的 clubId，忽略传入参数
         params.set('clubId', String(user.clubId))
       } else if (clubId && clubId !== 'all') {
         params.set('clubId', clubId)
       }
       const url = params.toString() ? `/api/users?${params}` : '/api/users'
-      const res = await fetch(url)
+      const res = await authFetch(url)
       const data = await res.json()
       setUsers(data)
     } catch (error) {
@@ -89,11 +91,11 @@ export default function UsersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   const fetchClubs = async () => {
     try {
-      const res = await fetch('/api/clubs')
+      const res = await authFetch('/api/clubs')
       const data = await res.json()
       setClubs(data)
     } catch (error) {
@@ -101,26 +103,29 @@ export default function UsersPage() {
     }
   }
 
+  // 初始化加载
   React.useEffect(() => {
     fetchUsers()
     fetchClubs()
   }, [])
 
-  // 俱乐部筛选变化时重新获取用户
+  // 俱乐部筛选变化时重新获取用户（super_admin 专用）
   React.useEffect(() => {
-    fetchUsers(filterClubId === 'all' ? '' : filterClubId)
+    if (filterClubId !== 'all') {
+      fetchUsers(filterClubId)
+    }
   }, [filterClubId])
 
   const handleSubmit = async () => {
     try {
       if (editId) {
-        await fetch(`/api/users/${editId}`, {
+        await authFetch(`/api/users/${editId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         })
       } else {
-        const res = await fetch('/api/users', {
+        const res = await authFetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -149,7 +154,7 @@ export default function UsersPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除该用户吗？')) return
     try {
-      await fetch(`/api/users/${id}`, { method: 'DELETE' })
+      await authFetch(`/api/users/${id}`, { method: 'DELETE' })
       fetchUsers(filterClubId === 'all' ? '' : filterClubId)
     } catch (error) {
       console.error('删除失败:', error)
@@ -300,9 +305,11 @@ export default function UsersPage() {
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(user.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {user.id !== currentUser?.id && (
+                          <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(user.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

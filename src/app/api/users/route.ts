@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getAuthUser } from '@/lib/auth'
 import crypto from 'crypto'
 
 function hashPassword(password: string): string {
@@ -28,6 +29,12 @@ export async function GET(request: NextRequest) {
     where.memberships = { some: { clubId: parseInt(clubId) } }
   }
 
+  // 俱乐部管理员：强制只看自己俱乐部的用户
+  const authUser = await getAuthUser(request)
+  if (authUser?.role === 'club_admin' && authUser.clubId) {
+    where.memberships = { some: { clubId: authUser.clubId } }
+  }
+
   const users = await prisma.user.findMany({
     where,
     include: {
@@ -53,11 +60,15 @@ export async function GET(request: NextRequest) {
 
 // POST - 创建用户
 export async function POST(request: NextRequest) {
-  const { phone, name, role, password, createdByRole, clubId } = await request.json()
+  const { phone, name, role, password, clubId } = await request.json()
 
   if (!phone || !name || !role) {
     return NextResponse.json({ error: '请填写完整信息' }, { status: 400 })
   }
+
+  // 通过 token 获取当前用户角色
+  const authUser = await getAuthUser(request)
+  const createdByRole = authUser?.role
 
   // 角色权限控制
   if (createdByRole === 'super_admin') {
@@ -73,6 +84,10 @@ export async function POST(request: NextRequest) {
     }
     if (!clubId) {
       return NextResponse.json({ error: '请选择所属俱乐部' }, { status: 400 })
+    }
+    // 俱乐部管理员只能在自己的俱乐部创建用户
+    if (authUser?.clubId && parseInt(String(clubId)) !== authUser.clubId) {
+      return NextResponse.json({ error: '无权在其他俱乐部创建用户' }, { status: 403 })
     }
   } else {
     return NextResponse.json({ error: '无权创建用户' }, { status: 403 })
@@ -96,7 +111,7 @@ export async function POST(request: NextRequest) {
   if (clubId) {
     await prisma.clubMember.create({
       data: {
-        clubId: parseInt(clubId),
+        clubId: parseInt(String(clubId)),
         userId: user.id,
         role: role === 'club_admin' ? 'admin' : 'coach',
       },
@@ -106,7 +121,7 @@ export async function POST(request: NextRequest) {
   // 如果是俱乐部管理员，同时设置为俱乐部的 adminId
   if (role === 'club_admin' && clubId) {
     await prisma.club.update({
-      where: { id: parseInt(clubId) },
+      where: { id: parseInt(String(clubId)) },
       data: { adminId: user.id },
     })
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getAuthUser } from '@/lib/auth'
 
 // GET - 获取校区列表
 export async function GET(request: NextRequest) {
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
 
   const data = campuses.map((c) => ({
     id: c.id,
+    clubId: c.clubId,
     name: c.name,
     club: c.club.name,
     address: c.address,
@@ -40,8 +42,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '请填写完整信息' }, { status: 400 })
   }
 
+  // 俱乐部管理员：强制使用自己的 clubId
+  const authUser = await getAuthUser(request)
+  const finalClubId = authUser?.role === 'club_admin' && authUser.clubId
+    ? authUser.clubId
+    : parseInt(clubId)
+
+  if (authUser?.role === 'club_admin' && authUser.clubId !== finalClubId) {
+    return NextResponse.json({ error: '无权在其他俱乐部创建校区' }, { status: 403 })
+  }
+
   const campus = await prisma.campus.create({
-    data: { clubId: parseInt(clubId), name, address, phone },
+    data: { clubId: finalClubId, name, address, phone },
   })
 
   return NextResponse.json(campus)

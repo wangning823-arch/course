@@ -45,13 +45,13 @@ model Club {
   phone         String?   // 联系电话
   address       String?   // 总部地址
   businessHours String?   // 营业时间
-  adminId       Int       // 管理员ID
+  adminId       Int?      // 管理员ID
   status        Int       @default(1) // 状态：0禁用 1启用
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   // 关联
-  admin         User      @relation("ClubAdmin", fields: [adminId], references: [id])
+  admin         User?     @relation("ClubAdmin", fields: [adminId], references: [id])
   campuses      Campus[]
   subjects      Subject[]
   courses       Course[]

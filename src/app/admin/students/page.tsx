@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { ClubSelector } from '@/components/club-selector'
+import { authFetch } from '@/lib/fetch-client'
 
 interface Coach { id: number; name: string }
 
@@ -20,7 +21,7 @@ export default function StudentsPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ name: '', phone: '', gender: '1', parentName: '', parentPhone: '' })
   const [editId, setEditId] = React.useState<number | null>(null)
-  const [role, setRole] = React.useState('')
+  const [role, setRole] = React.useState<string>('')
   const [userId, setUserId] = React.useState<number | null>(null)
   const [coaches, setCoaches] = React.useState<Coach[]>([])
 
@@ -47,7 +48,7 @@ export default function StudentsPage() {
         url += `&coachId=${user.id}`
       }
 
-      const res = await fetch(url)
+      const res = await authFetch(url)
       const data = await res.json()
       setStudents(data)
     } catch (error) {
@@ -63,7 +64,7 @@ export default function StudentsPage() {
     const clubId = localStorage.getItem('currentClubId')
     if (!clubId) return
     try {
-      const res = await fetch(`/api/users?role=coach&clubId=${clubId}`)
+      const res = await authFetch(`/api/users?role=coach&clubId=${clubId}`)
       const data = await res.json()
       setCoaches(data)
     } catch (e) {
@@ -100,13 +101,13 @@ export default function StudentsPage() {
       }
 
       if (editId) {
-        await fetch(`/api/students/${editId}`, {
+        await authFetch(`/api/students/${editId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(submitData),
         })
       } else {
-        await fetch('/api/students', {
+        await authFetch('/api/students', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(submitData),
@@ -124,7 +125,7 @@ export default function StudentsPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除该学员吗？')) return
     try {
-      await fetch(`/api/students/${id}`, { method: 'DELETE' })
+      await authFetch(`/api/students/${id}`, { method: 'DELETE' })
       fetchStudents()
     } catch (error) {
       console.error('删除失败:', error)
@@ -146,7 +147,7 @@ export default function StudentsPage() {
   // 切换学员归属
   const handleAssign = async (studentId: number, coachId: number | null) => {
     try {
-      await fetch(`/api/students/${studentId}/assign`, {
+      await authFetch(`/api/students/${studentId}/assign`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ coachId }),
@@ -183,7 +184,7 @@ export default function StudentsPage() {
               <DialogHeader>
                 <DialogTitle>{editId ? '编辑学员' : '添加学员'}</DialogTitle>
                 <DialogDescription>
-                  {role === 'coach' ? '添加的学员将仅对你可见' : '填写学员信息'}
+                  {String(role) === 'coach' ? '添加的学员将仅对你可见' : '填写学员信息'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">

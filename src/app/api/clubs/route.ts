@@ -17,7 +17,7 @@ export async function GET() {
     description: c.description,
     address: c.address,
     phone: c.phone,
-    admin: c.admin.name,
+    admin: c.admin?.name || '-',
     campuses: c._count.campuses,
     coaches: c._count.members,
     status: c.status,
