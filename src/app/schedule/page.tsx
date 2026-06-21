@@ -10,6 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { ClubSelector } from '@/components/club-selector'
 
+// 本地日期格式化（避免时区偏移）
+function getLocalDateStr(d: Date) {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 // 生成一周的日期
 function getWeekDates(offset: number = 0) {
   const now = new Date()
@@ -133,8 +141,8 @@ export default function SchedulePage() {
     setLoading(true)
     try {
       const dates = getWeekDates(weekOffset)
-      const startDate = dates[0].toISOString()
-      const endDate = new Date(dates[6].getTime() + 86400000 - 1).toISOString()
+      const startDate = getLocalDateStr(dates[0])
+      const endDate = getLocalDateStr(dates[6])
       let url = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
 
       // 教练只能看自己的课程
@@ -247,7 +255,7 @@ export default function SchedulePage() {
 
   // 将课程映射到日历网格
   const getCourseAt = (dayIdx: number, hour: number) => {
-    const dateStr = weekDates[dayIdx].toISOString().split('T')[0]
+    const dateStr = getLocalDateStr(weekDates[dayIdx])
     return courses.find((c) => {
       if (c.date !== dateStr) return false
       const startHour = parseInt(c.startTime.split(':')[0])

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search') || ''
   const role = searchParams.get('role') || ''
   const clubId = searchParams.get('clubId') || ''
+  const phoneCheck = searchParams.get('phoneCheck') || '' // 手机号检测模式：跳过俱乐部过滤
 
   const where: any = {}
   if (search) {
@@ -24,15 +25,19 @@ export async function GET(request: NextRequest) {
   if (role) {
     where.role = role
   }
-  // 按俱乐部过滤：通过 ClubMember 关联筛选属于该俱乐部的用户
-  if (clubId) {
-    where.memberships = { some: { clubId: parseInt(clubId) } }
-  }
 
-  // 俱乐部管理员：强制只看自己俱乐部的用户
-  const authUser = await getAuthUser(request)
-  if (authUser?.role === 'club_admin' && authUser.clubId) {
-    where.memberships = { some: { clubId: authUser.clubId } }
+  // 手机号检测模式：不按俱乐部过滤，搜索所有用户
+  if (!phoneCheck) {
+    // 按俱乐部过滤：通过 ClubMember 关联筛选属于该俱乐部的用户
+    if (clubId) {
+      where.memberships = { some: { clubId: parseInt(clubId) } }
+    }
+
+    // 俱乐部管理员：强制只看自己俱乐部的用户
+    const authUser = await getAuthUser(request)
+    if (authUser?.role === 'club_admin' && authUser.clubId) {
+      where.memberships = { some: { clubId: authUser.clubId } }
+    }
   }
 
   const users = await prisma.user.findMany({
@@ -94,12 +99,39 @@ export async function POST(request: NextRequest) {
   }
 
   // 检查手机号是否已存在
-  const existing = await prisma.user.findUnique({ where: { phone } })
+  const existing = await prisma.user.findUnique({
+    where: { phone },
+    include: { memberships: { select: { clubId: true } } },
+  })
+
   if (existing) {
-    return NextResponse.json({ error: '手机号已存在' }, { status: 400 })
+    // 手机号已存在：如果是教练，检查是否需要关联到新俱乐部
+    const targetClubId = parseInt(String(clubId))
+    const alreadyMember = existing.memberships.some(m => m.clubId === targetClubId)
+
+    if (alreadyMember) {
+      return NextResponse.json({ error: '该用户已是此俱乐部成员' }, { status: 400 })
+    }
+
+    // 关联到新俱乐部
+    await prisma.clubMember.create({
+      data: {
+        clubId: targetClubId,
+        userId: existing.id,
+        role: role === 'club_admin' ? 'admin' : 'coach',
+      },
+    })
+
+    return NextResponse.json({
+      id: existing.id,
+      name: existing.name,
+      phone: existing.phone,
+      role: existing.role,
+      message: '已关联到当前俱乐部',
+    })
   }
 
-  // 密码处理：默认密码 123456
+  // 手机号不存在：创建新用户
   const finalPassword = password || '123456'
   const passwordHash = hashPassword(finalPassword)
 

@@ -13,9 +13,12 @@ export async function GET(request: NextRequest) {
   const where: any = {}
   if (clubId) where.clubId = parseInt(clubId)
   if (startDate && endDate) {
+    // 本地日期字符串转为当天开始和结束的时间范围
+    const start = new Date(startDate + 'T00:00:00')
+    const end = new Date(endDate + 'T23:59:59')
     where.scheduledDate = {
-      gte: new Date(startDate),
-      lte: new Date(endDate),
+      gte: start,
+      lte: end,
     }
   }
   if (coachId) where.coachId = parseInt(coachId)
@@ -34,20 +37,25 @@ export async function GET(request: NextRequest) {
     orderBy: [{ scheduledDate: 'asc' }, { startTime: 'asc' }],
   })
 
-  const data = courses.map((c) => ({
-    id: c.id,
-    subject: c.subject.name,
-    coach: c.coach.name,
-    campus: c.campus?.name || '-',
-    date: c.scheduledDate.toISOString().split('T')[0],
-    startTime: c.startTime,
-    endTime: c.endTime,
-    students: c.students.map((s) => s.student.name).join('、'),
-    status: c.status,
-    teachingMode: c.teachingMode,
-    location: c.location,
-    remark: c.remark,
-  }))
+  const data = courses.map((c) => {
+    // 本地日期格式化
+    const d = new Date(c.scheduledDate)
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    return {
+      id: c.id,
+      subject: c.subject.name,
+      coach: c.coach.name,
+      campus: c.campus?.name || '-',
+      date: dateStr,
+      startTime: c.startTime,
+      endTime: c.endTime,
+      students: c.students.map((s) => s.student.name).join('、'),
+      status: c.status,
+      teachingMode: c.teachingMode,
+      location: c.location,
+      remark: c.remark,
+    }
+  })
 
   return NextResponse.json(data)
 }

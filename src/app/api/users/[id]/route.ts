@@ -68,7 +68,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   return NextResponse.json(user)
 }
 
-// DELETE - 删除用户
+// DELETE - 删除用户（多俱乐部用户只移除关联，单俱乐部用户彻底删除）
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const userId = parseInt(id)
@@ -88,7 +88,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     return NextResponse.json({ error: '不能删除系统管理员' }, { status: 403 })
   }
 
-  // 俱乐部管理员只能删除自己俱乐部的用户
+  // 俱乐部管理员只能操作自己俱乐部的用户
   if (authUser?.role === 'club_admin') {
     const inClub = targetUser.memberships.some(m => m.clubId === authUser.clubId)
     if (!inClub) {
@@ -96,42 +96,94 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
   }
 
-  // 用事务按正确顺序清理关联记录
+  // 确定要移除哪些俱乐部关联
+  // super_admin: 移除所有关联并彻底删除
+  // club_admin: 只移除自己俱乐部的关联
+  const isSuperAdmin = authUser?.role === 'super_admin'
+  const clubIdsToRemove = isSuperAdmin
+    ? targetUser.memberships.map(m => m.clubId)
+    : targetUser.memberships
+        .filter(m => m.clubId === authUser!.clubId)
+        .map(m => m.clubId)
+
+  const remainingMemberships = targetUser.memberships.length - clubIdsToRemove.length
+
   await prisma.$transaction(async (tx) => {
     // 1. 先解除该用户确认过的课时的外键（confirmedById → User）
     await tx.lesson.updateMany({ where: { confirmedById: userId }, data: { confirmedById: null } })
 
-    // 2. 结算明细依赖课时，先删结算明细
-    const lessonsAsCoach = await tx.lesson.findMany({ where: { coachId: userId }, select: { id: true } })
-    const lessonIds = lessonsAsCoach.map(l => l.id)
-    if (lessonIds.length > 0) {
-      await tx.settlementItem.deleteMany({ where: { lessonId: { in: lessonIds } } })
+    // 2. 处理要移除的俱乐部下的课程和课时
+    if (clubIdsToRemove.length > 0) {
+      // 找出这些俱乐部下的课程
+      const courses = await tx.course.findMany({
+        where: { clubId: { in: clubIdsToRemove }, OR: [{ coachId: userId }, { createdBy: userId }] },
+        select: { id: true },
+      })
+      const courseIds = courses.map(c => c.id)
+      if (courseIds.length > 0) {
+        // 清理课程关联的课时
+        const lessons = await tx.lesson.findMany({ where: { courseId: { in: courseIds } }, select: { id: true } })
+        const lessonIds = lessons.map(l => l.id)
+        if (lessonIds.length > 0) {
+          await tx.settlementItem.deleteMany({ where: { lessonId: { in: lessonIds } } })
+        }
+        await tx.lesson.deleteMany({ where: { courseId: { in: courseIds } } })
+        await tx.courseStudent.deleteMany({ where: { courseId: { in: courseIds } } })
+        await tx.course.deleteMany({ where: { id: { in: courseIds } } })
+      }
+
+      // 删除该用户在这些俱乐部的教练定价
+      await tx.coachPrice.deleteMany({ where: { coachId: userId, clubId: { in: clubIdsToRemove } } })
+
+      // 解除这些俱乐部中该用户负责的学员
+      await tx.student.updateMany({
+        where: { coachId: userId, clubId: { in: clubIdsToRemove } },
+        data: { coachId: null },
+      })
+
+      // 解除这些俱乐部的 adminId
+      await tx.club.updateMany({
+        where: { adminId: userId, id: { in: clubIdsToRemove } },
+        data: { adminId: null },
+      })
     }
-    // 3. 删除该用户作为教练的课时记录
-    await tx.lesson.deleteMany({ where: { coachId: userId } })
 
-    // 4. 处理该用户创建或执教的课程
-    const courses = await tx.course.findMany({ where: { OR: [{ coachId: userId }, { createdBy: userId }] }, select: { id: true } })
-    const courseIds = courses.map(c => c.id)
-    if (courseIds.length > 0) {
-      // 先清理这些课程下的课时中该用户确认过的记录
-      await tx.lesson.updateMany({ where: { courseId: { in: courseIds }, confirmedById: userId }, data: { confirmedById: null } })
-      await tx.courseStudent.deleteMany({ where: { courseId: { in: courseIds } } })
-      await tx.lesson.deleteMany({ where: { courseId: { in: courseIds } } })
-      await tx.course.deleteMany({ where: { id: { in: courseIds } } })
+    // 3. 移除俱乐部关联
+    await tx.clubMember.deleteMany({ where: { userId, clubId: { in: clubIdsToRemove } } })
+
+    // 4. 如果没有剩余关联，彻底删除用户
+    if (remainingMemberships <= 0) {
+      // 清理剩余的教练课时（其他俱乐部的）
+      const remainingLessons = await tx.lesson.findMany({ where: { coachId: userId }, select: { id: true } })
+      const remainingLessonIds = remainingLessons.map(l => l.id)
+      if (remainingLessonIds.length > 0) {
+        await tx.settlementItem.deleteMany({ where: { lessonId: { in: remainingLessonIds } } })
+      }
+      await tx.lesson.deleteMany({ where: { coachId: userId } })
+
+      // 清理剩余课程
+      const remainingCourses = await tx.course.findMany({
+        where: { OR: [{ coachId: userId }, { createdBy: userId }] },
+        select: { id: true },
+      })
+      const remainingCourseIds = remainingCourses.map(c => c.id)
+      if (remainingCourseIds.length > 0) {
+        await tx.courseStudent.deleteMany({ where: { courseId: { in: remainingCourseIds } } })
+        await tx.lesson.deleteMany({ where: { courseId: { in: remainingCourseIds } } })
+        await tx.course.deleteMany({ where: { id: { in: remainingCourseIds } } })
+      }
+
+      await tx.coachPrice.deleteMany({ where: { coachId: userId } })
+      await tx.clubMember.deleteMany({ where: { userId } })
+      await tx.student.updateMany({ where: { coachId: userId }, data: { coachId: null } })
+      await tx.club.updateMany({ where: { adminId: userId }, data: { adminId: null } })
+      await tx.user.delete({ where: { id: userId } })
     }
-
-    // 5. 清理其他关联
-    await tx.coachPrice.deleteMany({ where: { coachId: userId } })
-    await tx.clubMember.deleteMany({ where: { userId } })
-
-    // 6. 解除学员和俱乐部的关联
-    await tx.student.updateMany({ where: { coachId: userId }, data: { coachId: null } })
-    await tx.club.updateMany({ where: { adminId: userId }, data: { adminId: null } })
-
-    // 7. 最后删除用户
-    await tx.user.delete({ where: { id: userId } })
   })
 
-  return NextResponse.json({ success: true })
+  const message = remainingMemberships > 0
+    ? `已从当前俱乐部移除，该用户仍属于 ${remainingMemberships} 个其他俱乐部`
+    : '用户已彻底删除'
+
+  return NextResponse.json({ success: true, message })
 }

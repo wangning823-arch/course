@@ -35,6 +35,7 @@ export default function UsersPage() {
   const [currentUser, setCurrentUser] = React.useState<any>(null)
   const [createdPassword, setCreatedPassword] = React.useState('')
   const [filterClubId, setFilterClubId] = React.useState<string>('all')
+  const [phoneExists, setPhoneExists] = React.useState(false)
 
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -68,6 +69,33 @@ export default function UsersPage() {
   const isClubAdminLocked = React.useMemo(() => {
     return currentUser?.role === 'club_admin'
   }, [currentUser])
+
+  const [existingUserName, setExistingUserName] = React.useState('')
+
+  // 检查手机号是否已存在
+  const checkPhone = async (phone: string) => {
+    if (!phone || editId) {
+      setPhoneExists(false)
+      setExistingUserName('')
+      return
+    }
+    try {
+      const res = await authFetch(`/api/users?phoneCheck=1&search=${encodeURIComponent(phone)}`)
+      const data = await res.json()
+      const existing = data.find((u: any) => u.phone === phone)
+      if (existing) {
+        setPhoneExists(true)
+        setExistingUserName(existing.name)
+        setFormData(prev => ({ ...prev, name: existing.name }))
+      } else {
+        setPhoneExists(false)
+        setExistingUserName('')
+      }
+    } catch {
+      setPhoneExists(false)
+      setExistingUserName('')
+    }
+  }
 
   const fetchUsers = React.useCallback(async (clubId?: string) => {
     setLoading(true)
@@ -138,7 +166,10 @@ export default function UsersPage() {
           alert(data.error || '创建失败')
           return
         }
-        if (data.defaultPassword) {
+        if (data.message) {
+          // 已关联到俱乐部，显示提示
+          alert(data.message)
+        } else if (data.defaultPassword) {
           setCreatedPassword(data.defaultPassword)
         }
       }
@@ -152,13 +183,16 @@ export default function UsersPage() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm('确定要删除该用户吗？')) return
+    if (!confirm('确定要从当前俱乐部移除该用户吗？')) return
     try {
       const res = await authFetch(`/api/users/${id}`, { method: 'DELETE' })
+      const data = await res.json()
       if (!res.ok) {
-        const data = await res.json()
         alert(data.error || '删除失败')
         return
+      }
+      if (data.message) {
+        alert(data.message)
       }
       fetchUsers(filterClubId === 'all' ? '' : filterClubId)
     } catch (error) {
@@ -199,7 +233,7 @@ export default function UsersPage() {
             刷新
           </Button>
           {availableRoles.length > 0 && (
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setPhoneExists(false); setExistingUserName('') } }}>
               <DialogTrigger asChild>
                 <Button onClick={() => { setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'coach', password: '', clubId: isClubAdminLocked ? String(currentUser?.clubId || '') : '' }); setEditId(null); setCreatedPassword('') }}>
                   <Plus className="h-4 w-4 mr-1" />添加用户
@@ -214,12 +248,19 @@ export default function UsersPage() {
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">姓名</label>
-                    <Input placeholder="请输入姓名" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                    <label className="text-sm font-medium">手机号</label>
+                    <Input type="tel" placeholder="请输入手机号" value={formData.phone} onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); checkPhone(e.target.value) }} />
+                    {phoneExists && (
+                      <p className="text-sm text-blue-600">该手机号已存在，将直接关联到当前俱乐部</p>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">手机号</label>
-                    <Input type="tel" placeholder="请输入手机号" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+                    <label className="text-sm font-medium">姓名</label>
+                    {phoneExists ? (
+                      <Input value={existingUserName} disabled className="bg-gray-50" />
+                    ) : (
+                      <Input placeholder="请输入姓名" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                    )}
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">角色</label>
@@ -260,7 +301,9 @@ export default function UsersPage() {
                       placeholder={editId ? '留空不修改' : '默认 123456'}
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      disabled={phoneExists}
                     />
+                    {phoneExists && <p className="text-xs text-gray-500">已有用户，无需填写</p>}
                   </div>
                 </div>
                 <DialogFooter>
