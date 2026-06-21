@@ -13,7 +13,9 @@ export default function StatisticsPage() {
     totalLessons: 0,
     totalHours: 0,
     activeStudents: 0,
+    monthIncome: 0,
     coachRanking: [] as any[],
+    studentRanking: [] as any[],
     monthlyTrend: [] as any[],
     subjectData: [] as any[],
   })
@@ -82,7 +84,7 @@ export default function StatisticsPage() {
       ) : (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-gray-500">总课时</p>
@@ -105,6 +107,12 @@ export default function StatisticsPage() {
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-gray-500">教练数量</p>
                 <p className="text-3xl font-bold text-red-500 mt-1">{stats.coachRanking.length}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <p className="text-sm text-gray-500">课时收入</p>
+                <p className="text-3xl font-bold text-purple-500 mt-1">¥{stats.monthIncome.toLocaleString()}</p>
               </CardContent>
             </Card>
           </div>
@@ -174,6 +182,7 @@ export default function StatisticsPage() {
                       <TableHead>课时数</TableHead>
                       <TableHead>总时长</TableHead>
                       <TableHead>学员数</TableHead>
+                      <TableHead className="hidden sm:table-cell">主授科目</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -190,6 +199,50 @@ export default function StatisticsPage() {
                         <TableCell>{coach.lessons}节</TableCell>
                         <TableCell>{coach.hours}小时</TableCell>
                         <TableCell>{coach.students}人</TableCell>
+                        <TableCell className="hidden sm:table-cell">{coach.mainSubject}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Student Ranking */}
+          <Card>
+            <CardHeader>
+              <CardTitle>学员排名</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {stats.studentRanking.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">暂无数据</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>排名</TableHead>
+                      <TableHead>学员</TableHead>
+                      <TableHead>课时数</TableHead>
+                      <TableHead>总时长</TableHead>
+                      <TableHead>科目数</TableHead>
+                      <TableHead className="hidden sm:table-cell">所属教练</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stats.studentRanking.map((student: any) => (
+                      <TableRow key={student.rank}>
+                        <TableCell>
+                          <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white ${
+                            student.rank === 1 ? 'bg-yellow-500' : student.rank === 2 ? 'bg-gray-400' : student.rank === 3 ? 'bg-orange-400' : 'bg-gray-300'
+                          }`}>
+                            {student.rank}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-medium">{student.name}</TableCell>
+                        <TableCell>{student.lessons}节</TableCell>
+                        <TableCell>{student.hours}小时</TableCell>
+                        <TableCell>{student.subjects}科</TableCell>
+                        <TableCell className="hidden sm:table-cell">{student.coachName}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

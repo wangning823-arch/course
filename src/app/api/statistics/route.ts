@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     where: dateWhere,
   })
 
-  // 教练排名
+  // 教练排名（优化N+1：一次查出所有教练统计）
   const coachStats = await prisma.lesson.groupBy({
     by: ['coachId'],
     where: dateWhere,
@@ -64,34 +64,131 @@ export async function GET(request: NextRequest) {
     _sum: { durationMinutes: true },
   })
 
-  const coachRanking = await Promise.all(
-    coachStats
-      .sort((a, b) => (b._count.id || 0) - (a._count.id || 0))
-      .slice(0, 10)
-      .map(async (stat, index) => {
-        const coach = await prisma.user.findUnique({
-          where: { id: stat.coachId },
-          select: { name: true },
-        })
+  // 一次性查出所有教练信息
+  const coachIds = coachStats.map(s => s.coachId)
+  const coaches = await prisma.user.findMany({
+    where: { id: { in: coachIds } },
+    select: { id: true, name: true },
+  })
+  const coachMap = new Map(coaches.map(c => [c.id, c.name]))
 
-        // 统计该教练的学员数
-        const studentCount = await prisma.lesson.groupBy({
-          by: ['studentId'],
-          where: {
-            ...dateWhere,
-            coachId: stat.coachId,
-          },
-        })
+  // 一次性查出每个教练的学员数
+  const coachStudentStats = await prisma.lesson.groupBy({
+    by: ['coachId', 'studentId'],
+    where: dateWhere,
+  })
+  const coachStudentCount = new Map<number, Set<number>>()
+  for (const stat of coachStudentStats) {
+    if (!coachStudentCount.has(stat.coachId)) {
+      coachStudentCount.set(stat.coachId, new Set())
+    }
+    coachStudentCount.get(stat.coachId)!.add(stat.studentId)
+  }
 
-        return {
-          rank: index + 1,
-          name: coach?.name || '未知',
-          lessons: stat._count.id,
-          hours: Math.round(((stat._sum.durationMinutes || 0) / 60) * 10) / 10,
-          students: studentCount.length,
-        }
-      })
-  )
+  // 一次性查出每个教练的主授科目
+  const coachCourseStats = await prisma.lesson.groupBy({
+    by: ['courseId'],
+    where: dateWhere,
+  })
+  const courseIds = [...new Set(coachCourseStats.map(s => s.courseId))]
+  const courses = await prisma.course.findMany({
+    where: { id: { in: courseIds } },
+    select: { id: true, subjectId: true, subject: { select: { name: true } } },
+  })
+  const courseSubjectMap = new Map(courses.map(c => [c.id, c.subject.name]))
+
+  // 统计每个教练的各科目课时数
+  const coachSubjectCount = new Map<number, Map<string, number>>()
+  for (const stat of coachCourseStats) {
+    const course = courses.find(c => c.id === stat.courseId)
+    if (!course) continue
+    // 需要通过 lesson 的 coachId 关联，这里简化处理
+  }
+
+  // 重新计算教练科目：需要先查出每条lesson的coachId和courseId
+  const coachLessonsForSubject = await prisma.lesson.findMany({
+    where: dateWhere,
+    select: { coachId: true, courseId: true },
+  })
+  const coachSubjectMap2 = new Map<number, Map<string, number>>()
+  for (const l of coachLessonsForSubject) {
+    const subjectName = courseSubjectMap.get(l.courseId)
+    if (!subjectName) continue
+    if (!coachSubjectMap2.has(l.coachId)) {
+      coachSubjectMap2.set(l.coachId, new Map())
+    }
+    const subjectMap = coachSubjectMap2.get(l.coachId)!
+    subjectMap.set(subjectName, (subjectMap.get(subjectName) || 0) + 1)
+  }
+
+  const coachRanking = coachStats
+    .sort((a, b) => (b._count.id || 0) - (a._count.id || 0))
+    .slice(0, 10)
+    .map((stat, index) => {
+      // 找出主授科目（课时最多的）
+      const subjectCounts = coachSubjectMap2.get(stat.coachId)
+      let mainSubject = '-'
+      if (subjectCounts && subjectCounts.size > 0) {
+        const sorted = [...subjectCounts.entries()].sort((a, b) => b[1] - a[1])
+        mainSubject = sorted[0][0]
+        if (sorted.length > 1) mainSubject += `等${sorted.length}科`
+      }
+
+      return {
+        rank: index + 1,
+        name: coachMap.get(stat.coachId) || '未知',
+        lessons: stat._count.id,
+        hours: Math.round(((stat._sum.durationMinutes || 0) / 60) * 10) / 10,
+        students: coachStudentCount.get(stat.coachId)?.size || 0,
+        mainSubject,
+      }
+    })
+
+  // 学员排名
+  const studentStats = await prisma.lesson.groupBy({
+    by: ['studentId'],
+    where: dateWhere,
+    _count: { id: true },
+    _sum: { durationMinutes: true },
+  })
+
+  // 一次性查出所有学员信息
+  const studentIds = studentStats.map(s => s.studentId)
+  const students = await prisma.student.findMany({
+    where: { id: { in: studentIds } },
+    select: { id: true, name: true, coach: { select: { id: true, name: true } } },
+  })
+  const studentMap = new Map(students.map(s => [s.id, s]))
+
+  // 一次性查出每个学员的科目数
+  const studentLessonCourses = await prisma.lesson.findMany({
+    where: dateWhere,
+    select: { studentId: true, courseId: true },
+  })
+  const studentSubjectCount = new Map<number, Set<string>>()
+  for (const l of studentLessonCourses) {
+    const subjectName = courseSubjectMap.get(l.courseId)
+    if (!subjectName) continue
+    if (!studentSubjectCount.has(l.studentId)) {
+      studentSubjectCount.set(l.studentId, new Set())
+    }
+    studentSubjectCount.get(l.studentId)!.add(subjectName)
+  }
+
+  const studentRanking = studentStats
+    .sort((a, b) => (b._count.id || 0) - (a._count.id || 0))
+    .slice(0, 10)
+    .map((stat, index) => {
+      const student = studentMap.get(stat.studentId)
+      return {
+        rank: index + 1,
+        name: student?.name || '未知',
+        coachName: student?.coach?.name || '-',
+        lessons: stat._count.id,
+        hours: Math.round(((stat._sum.durationMinutes || 0) / 60) * 10) / 10,
+        subjects: studentSubjectCount.get(stat.studentId)?.size || 0,
+      }
+    })
 
   // 月度趋势（最近6个月）
   const monthlyTrend = []
@@ -112,21 +209,12 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  // 科目分布
-  const subjectStats = await prisma.lesson.groupBy({
-    by: ['courseId'],
-    where: dateWhere,
-  })
-
+  // 科目分布（优化N+1：使用已查出的课程数据）
   const subjectDistribution: Record<string, number> = {}
-  for (const stat of subjectStats) {
-    const course = await prisma.course.findUnique({
-      where: { id: stat.courseId },
-      include: { subject: { select: { name: true } } },
-    })
-    if (course) {
-      const name = course.subject.name
-      subjectDistribution[name] = (subjectDistribution[name] || 0) + 1
+  for (const stat of coachCourseStats) {
+    const subjectName = courseSubjectMap.get(stat.courseId)
+    if (subjectName) {
+      subjectDistribution[subjectName] = (subjectDistribution[subjectName] || 0) + 1
     }
   }
 
@@ -179,6 +267,7 @@ export async function GET(request: NextRequest) {
     activeStudents: activeStudents.length,
     monthIncome,
     coachRanking,
+    studentRanking,
     monthlyTrend,
     subjectData,
   })

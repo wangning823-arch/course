@@ -75,11 +75,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '请填写完整信息' }, { status: 400 })
   }
 
+  // 解析日期字符串为本地日期（避免时区偏移）
+  const parseLocalDate = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map(Number)
+    return new Date(year, month - 1, day)
+  }
+  const scheduledDateObj = parseLocalDate(scheduledDate)
+
   // 冲突检测：检查教练是否有时间冲突
   const conflictingCoach = await prisma.course.findFirst({
     where: {
       coachId: parseInt(coachId),
-      scheduledDate: new Date(scheduledDate),
+      scheduledDate: scheduledDateObj,
       status: { not: 'cancelled' },
       OR: [
         { startTime: { lt: endTime }, endTime: { gt: startTime } },
@@ -97,7 +104,7 @@ export async function POST(request: NextRequest) {
       where: {
         studentId: { in: studentIds.map(Number) },
         course: {
-          scheduledDate: new Date(scheduledDate),
+          scheduledDate: scheduledDateObj,
           status: { not: 'cancelled' },
           startTime: { lt: endTime },
           endTime: { gt: startTime },
@@ -117,7 +124,7 @@ export async function POST(request: NextRequest) {
       subjectId: parseInt(subjectId),
       coachId: parseInt(coachId),
       teachingMode: teachingMode || 'private',
-      scheduledDate: new Date(scheduledDate),
+      scheduledDate: scheduledDateObj,
       startTime,
       endTime,
       location,

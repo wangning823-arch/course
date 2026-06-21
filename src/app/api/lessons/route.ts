@@ -85,6 +85,12 @@ export async function POST(request: NextRequest) {
 
   let finalCourseId = courseId ? parseInt(courseId) : null
 
+  // 解析日期字符串为本地日期（避免时区偏移）
+  const parseLocalDate = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map(Number)
+    return new Date(year, month - 1, day)
+  }
+
   // 如果没有选择课程，自动创建一个临时课程
   if (!finalCourseId && subjectId && scheduledDate && coachId) {
     // 获取科目信息以确定默认时长
@@ -109,7 +115,7 @@ export async function POST(request: NextRequest) {
         subjectId: parseInt(subjectId),
         coachId: parseInt(coachId),
         teachingMode: 'private',
-        scheduledDate: new Date(scheduledDate),
+        scheduledDate: parseLocalDate(scheduledDate),
         startTime: actualStart || '09:00',
         endTime: endTime,
         status: 'completed',
@@ -119,13 +125,15 @@ export async function POST(request: NextRequest) {
     finalCourseId = course.id
   }
 
+  const lessonDate = scheduledDate || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
+
   const lesson = await prisma.lesson.create({
     data: {
       courseId: finalCourseId!,
       studentId: parseInt(studentId),
       coachId: parseInt(coachId),
-      actualStart: actualStart ? new Date(`${scheduledDate || new Date().toISOString().split('T')[0]}T${actualStart}`) : null,
-      actualEnd: actualEnd ? new Date(`${scheduledDate || new Date().toISOString().split('T')[0]}T${actualEnd}`) : null,
+      actualStart: actualStart ? new Date(`${lessonDate}T${actualStart}`) : null,
+      actualEnd: actualEnd ? new Date(`${lessonDate}T${actualEnd}`) : null,
       durationMinutes: durationMinutes ? parseInt(durationMinutes) : null,
       content,
       performance,
