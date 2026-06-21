@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, Edit, Trash2, Search, RefreshCw, UserCheck, UserX } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, RefreshCw, UserCheck, UserX, Users, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -24,6 +24,7 @@ export default function StudentsPage() {
   const [role, setRole] = React.useState<string>('')
   const [userId, setUserId] = React.useState<number | null>(null)
   const [coaches, setCoaches] = React.useState<Coach[]>([])
+  const [studentType, setStudentType] = React.useState<'shared' | 'private'>('private')
 
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -95,9 +96,9 @@ export default function StudentsPage() {
       const clubId = localStorage.getItem('currentClubId')
       const submitData: any = { ...formData, gender: parseInt(formData.gender), clubId }
 
-      // 教练创建学员时自动设为私有
+      // 教练创建学员：根据选择设置归属
       if (role === 'coach' && userId) {
-        submitData.coachId = userId
+        submitData.coachId = studentType === 'private' ? userId : null
       }
 
       if (editId) {
@@ -140,6 +141,7 @@ export default function StudentsPage() {
       parentName: student.parentName || '',
       parentPhone: student.parentPhone || '',
     })
+    setStudentType(student.coachId ? 'private' : 'shared')
     setEditId(student.id)
     setDialogOpen(true)
   }
@@ -160,6 +162,8 @@ export default function StudentsPage() {
 
   const isAdmin = role === 'admin' || role === 'club_admin' || role === 'super_admin'
   const canManage = role === 'admin' || role === 'club_admin' // 超级管理员只能查看
+  const canAddStudent = role === 'admin' || role === 'club_admin' || role === 'coach'
+  const canEditOwn = role === 'coach' // 教练可编辑/删除自己的私有学员
 
   return (
     <div className="space-y-4">
@@ -173,10 +177,10 @@ export default function StudentsPage() {
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新
           </Button>
-          {canManage && (
+          {canAddStudent && (
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button onClick={() => { setFormData({ name: '', phone: '', gender: '1', parentName: '', parentPhone: '' }); setEditId(null) }}>
+                <Button onClick={() => { setFormData({ name: '', phone: '', gender: '1', parentName: '', parentPhone: '' }); setEditId(null); setStudentType('private') }}>
                   <Plus className="h-4 w-4 mr-1" />添加学员
                 </Button>
               </DialogTrigger>
@@ -184,9 +188,29 @@ export default function StudentsPage() {
               <DialogHeader>
                 <DialogTitle>{editId ? '编辑学员' : '添加学员'}</DialogTitle>
                 <DialogDescription>
-                  {String(role) === 'coach' ? '添加的学员将仅对你可见' : '填写学员信息'}
+                  {String(role) === 'coach' ? '选择学员归属并填写信息' : '填写学员信息'}
                 </DialogDescription>
               </DialogHeader>
+              {role === 'coach' && !editId && (
+                <div className="flex gap-2">
+                  <Button
+                    variant={studentType === 'private' ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setStudentType('private')}
+                  >
+                    <Lock className="h-4 w-4 mr-1" />私有学员
+                  </Button>
+                  <Button
+                    variant={studentType === 'shared' ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setStudentType('shared')}
+                  >
+                    <Users className="h-4 w-4 mr-1" />俱乐部共享
+                  </Button>
+                </div>
+              )}
               <div className="space-y-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -257,7 +281,7 @@ export default function StudentsPage() {
                     <TableHead className="hidden sm:table-cell">家长姓名</TableHead>
                     <TableHead className="hidden sm:table-cell">家长手机</TableHead>
                     {isAdmin && <TableHead>归属</TableHead>}
-                    {canManage && <TableHead>操作</TableHead>}
+                    {(canManage || canEditOwn) && <TableHead>操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -309,7 +333,7 @@ export default function StudentsPage() {
                           )}
                         </TableCell>
                       )}
-                      {canManage && (
+                      {(canManage || (canEditOwn && student.coach?.id === userId)) && (
                         <TableCell>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="sm" onClick={() => handleEdit(student)}>

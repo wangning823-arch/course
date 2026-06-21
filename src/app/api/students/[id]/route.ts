@@ -7,17 +7,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params
   const { name, phone, gender, parentName, parentPhone, remark, status, coachId } = await request.json()
 
-  // 验证俱乐部归属
+  // 验证权限
   const authUser = await getAuthUser(request)
+  const existingStudent = await prisma.student.findUnique({ where: { id: parseInt(id) }, select: { clubId: true, coachId: true } })
+  if (!existingStudent) return NextResponse.json({ error: '学员不存在' }, { status: 404 })
   if (authUser?.role === 'club_admin') {
-    const student = await prisma.student.findUnique({ where: { id: parseInt(id) }, select: { clubId: true } })
-    if (!student) return NextResponse.json({ error: '学员不存在' }, { status: 404 })
-    if (student.clubId !== authUser.clubId) {
+    if (existingStudent.clubId !== authUser.clubId) {
       return NextResponse.json({ error: '无权修改其他俱乐部的学员' }, { status: 403 })
+    }
+  } else if (authUser?.role === 'coach') {
+    // 教练只能编辑自己的私有学员
+    if (existingStudent.coachId !== authUser.userId) {
+      return NextResponse.json({ error: '无权修改其他教练的学员' }, { status: 403 })
     }
   }
 
-  const student = await prisma.student.update({
+  const updatedStudent = await prisma.student.update({
     where: { id: parseInt(id) },
     data: {
       name,
@@ -31,20 +36,25 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     },
   })
 
-  return NextResponse.json(student)
+  return NextResponse.json(updatedStudent)
 }
 
 // DELETE - 删除学员
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
-  // 验证俱乐部归属
+  // 验证权限
   const authUser = await getAuthUser(request)
+  const existingStudent = await prisma.student.findUnique({ where: { id: parseInt(id) }, select: { clubId: true, coachId: true } })
+  if (!existingStudent) return NextResponse.json({ error: '学员不存在' }, { status: 404 })
   if (authUser?.role === 'club_admin') {
-    const student = await prisma.student.findUnique({ where: { id: parseInt(id) }, select: { clubId: true } })
-    if (!student) return NextResponse.json({ error: '学员不存在' }, { status: 404 })
-    if (student.clubId !== authUser.clubId) {
+    if (existingStudent.clubId !== authUser.clubId) {
       return NextResponse.json({ error: '无权删除其他俱乐部的学员' }, { status: 403 })
+    }
+  } else if (authUser?.role === 'coach') {
+    // 教练只能删除自己的私有学员
+    if (existingStudent.coachId !== authUser.userId) {
+      return NextResponse.json({ error: '无权删除其他教练的学员' }, { status: 403 })
     }
   }
 

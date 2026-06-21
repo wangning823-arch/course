@@ -55,13 +55,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '请选择俱乐部' }, { status: 400 })
   }
 
-  // 俱乐部管理员：强制使用自己的 clubId
+  // 俱乐部管理员/教练：强制使用自己的 clubId
   const authUser = await getAuthUser(request)
-  const finalClubId = authUser?.role === 'club_admin' && authUser.clubId
+  const finalClubId = (authUser?.role === 'club_admin' || authUser?.role === 'coach') && authUser.clubId
     ? authUser.clubId
     : parseInt(clubId)
 
-  if (authUser?.role === 'club_admin' && authUser.clubId !== finalClubId) {
+  if ((authUser?.role === 'club_admin' || authUser?.role === 'coach') && authUser.clubId !== finalClubId) {
     return NextResponse.json({ error: '无权在其他俱乐部创建学员' }, { status: 403 })
   }
 
