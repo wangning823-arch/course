@@ -96,15 +96,20 @@ export default function LessonsPage() {
       const studentUrl = user?.role === 'coach' && user?.id
         ? `/api/students?clubId=${clubId}&coachId=${user.id}`
         : `/api/students?clubId=${clubId}`
-      const [courseRes, studentRes, coachRes, subjectRes] = await Promise.all([
+      const fetchPromises = [
         fetch(`/api/courses?clubId=${clubId}${user?.role === 'coach' && user?.id ? `&coachId=${user.id}` : ''}`),
         fetch(studentUrl),
         fetch(`/api/users?role=coach&clubId=${clubId}`),
         fetch(`/api/subjects?clubId=${clubId}`),
-      ])
+      ]
+      if (user?.role === 'club_admin') {
+        fetchPromises.push(fetch(`/api/users?role=club_admin&clubId=${clubId}`))
+      }
+      const [courseRes, studentRes, coachRes, subjectRes, adminRes] = await Promise.all(fetchPromises)
       const [courseData, studentData, coachData, subjectData] = await Promise.all([
         courseRes.json(), studentRes.json(), coachRes.json(), subjectRes.json(),
       ])
+      const adminData = adminRes ? await adminRes.json() : []
 
       // 过滤掉过去的课程，并合并相同课程
       const today = new Date()
@@ -123,11 +128,15 @@ export default function LessonsPage() {
       setCourses(Array.from(courseMap.values()))
       setStudents(studentData)
       setSubjects(subjectData)
-      // 教练只能选自己
+      // 教练只能选自己；俱乐部管理员可以选所有教练+管理员
       if (user?.role === 'coach' && user?.id) {
         setCoaches(coachData.filter((c: Coach) => c.id === user.id))
       } else {
-        setCoaches(coachData)
+        // 合并教练和管理员列表（去重）
+        const coachMap = new Map<number, Coach>()
+        for (const c of coachData) coachMap.set(c.id, c)
+        for (const a of adminData) coachMap.set(a.id, { id: a.id, name: a.name })
+        setCoaches(Array.from(coachMap.values()))
       }
     } catch (e) {
       console.error('加载选项失败:', e)

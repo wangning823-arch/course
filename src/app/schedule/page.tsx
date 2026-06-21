@@ -71,6 +71,8 @@ export default function SchedulePage() {
   const [selectedCourse, setSelectedCourse] = React.useState<CourseData | null>(null)
   const [courseRecorded, setCourseRecorded] = React.useState(false)
   const [recording, setRecording] = React.useState(false)
+  const [coachFilter, setCoachFilter] = React.useState('all')
+  const [role, setRole] = React.useState('')
 
   // 下拉选项数据
   const [subjects, setSubjects] = React.useState<Subject[]>([])
@@ -109,21 +111,31 @@ export default function SchedulePage() {
       const studentUrl = user?.role === 'coach' && user?.id
         ? `/api/students?clubId=${clubId}&coachId=${user.id}`
         : `/api/students?clubId=${clubId}`
-      const [subRes, coachRes, campusRes, studentRes] = await Promise.all([
+      // 俱乐部管理员也能当教练，需要同时查询管理员列表
+      const coachPromises = [
         fetch(`/api/subjects?clubId=${clubId}`),
         fetch(`/api/users?role=coach&clubId=${clubId}`),
         fetch(`/api/campuses?clubId=${clubId}`),
         fetch(studentUrl),
-      ])
+      ]
+      if (user?.role === 'club_admin') {
+        coachPromises.push(fetch(`/api/users?role=club_admin&clubId=${clubId}`))
+      }
+      const [subRes, coachRes, campusRes, studentRes, adminRes] = await Promise.all(coachPromises)
       const [subData, coachData, campusData, studentData] = await Promise.all([
         subRes.json(), coachRes.json(), campusRes.json(), studentRes.json(),
       ])
+      const adminData = adminRes ? await adminRes.json() : []
       setSubjects(subData)
-      // 教练只能选自己
+      // 教练只能选自己；俱乐部管理员可以选所有教练+管理员
       if (user?.role === 'coach' && user?.id) {
         setCoaches(coachData.filter((c: Coach) => c.id === user.id))
       } else {
-        setCoaches(coachData)
+        // 合并教练和管理员列表（去重）
+        const coachMap = new Map<number, Coach>()
+        for (const c of coachData) coachMap.set(c.id, c)
+        for (const a of adminData) coachMap.set(a.id, { id: a.id, name: a.name })
+        setCoaches(Array.from(coachMap.values()))
       }
       setCampuses(campusData)
       setStudents(studentData)
@@ -151,6 +163,9 @@ export default function SchedulePage() {
       // 教练只能看自己的课程
       if (user?.role === 'coach' && user?.id) {
         url += `&coachId=${user.id}`
+      } else if (coachFilter !== 'all') {
+        // 管理员可以选择查看某个教练的课程
+        url += `&coachId=${coachFilter}`
       }
 
       const res = await fetch(url)
@@ -161,11 +176,20 @@ export default function SchedulePage() {
     } finally {
       setLoading(false)
     }
-  }, [weekOffset])
+  }, [weekOffset, coachFilter])
 
   React.useEffect(() => {
     loadCourses()
   }, [loadCourses])
+
+  // 获取用户角色
+  React.useEffect(() => {
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      const user = JSON.parse(stored)
+      setRole(user.role || '')
+    }
+  }, [])
 
   React.useEffect(() => {
     loadOptions()
@@ -392,6 +416,20 @@ export default function SchedulePage() {
         <h1 className="text-2xl font-bold">排课管理</h1>
         <div className="flex items-center gap-3">
           <ClubSelector />
+          {/* 教练筛选（仅管理员可见） */}
+          {role !== 'coach' && (
+            <Select value={coachFilter} onValueChange={setCoachFilter}>
+              <SelectTrigger className="w-[130px]">
+                <SelectValue placeholder="筛选教练" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部教练</SelectItem>
+                {coaches.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm() }}>
           <DialogTrigger asChild>
             <Button>
