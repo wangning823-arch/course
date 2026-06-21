@@ -84,7 +84,7 @@ export function Header({ marginLeft, onMenuClick, isMobile }: HeaderProps) {
     router.push('/login')
   }
 
-  const showClubSelector = role !== 'super_admin' && clubs.length > 0
+  const showClubSelector = clubs.length > 0
 
   return (
     <header

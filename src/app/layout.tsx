@@ -16,6 +16,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   const isLoginPage = pathname === '/login'
 
+  // 教练不允许访问的管理页面
+  const coachBlockedPaths = ['/admin/users', '/admin/clubs', '/admin/campuses', '/admin/subjects', '/admin/students', '/admin/coach-prices']
+
   // 检查登录状态 + 设置页面标题
   React.useEffect(() => {
     if (isLoginPage) {
@@ -32,6 +35,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       const stored = localStorage.getItem('user')
       if (stored) {
         const user = JSON.parse(stored)
+
+        // 教练不允许访问管理页面，重定向到首页
+        if (user.role === 'coach' && coachBlockedPaths.some(p => pathname.startsWith(p))) {
+          router.replace('/')
+          return
+        }
+
         if (user.role === 'super_admin') {
           document.title = '课时管理系统'
         } else {
@@ -51,7 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }
       }
     }
-  }, [isLoginPage, router])
+  }, [isLoginPage, router, pathname])
 
   React.useEffect(() => {
     setMounted(true)

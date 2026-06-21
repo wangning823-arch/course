@@ -8,11 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 
-const quickActions = [
+const allQuickActions = [
   { label: '排课管理', href: '/schedule', color: 'bg-blue-500 hover:bg-blue-600' },
   { label: '记录课时', href: '/lessons', color: 'bg-green-500 hover:bg-green-600' },
   { label: '查看统计', href: '/statistics', color: 'bg-yellow-500 hover:bg-yellow-600' },
-  { label: '学员管理', href: '/admin/students', color: 'bg-purple-500 hover:bg-purple-600' },
+  { label: '学员管理', href: '/admin/students', color: 'bg-purple-500 hover:bg-purple-600', adminOnly: true },
 ]
 
 const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' }> = {
@@ -29,17 +29,46 @@ export default function HomePage() {
     activeStudents: 0,
     monthIncome: 0,
   })
+  const [role, setRole] = React.useState('')
+
+  React.useEffect(() => {
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      const user = JSON.parse(stored)
+      if (user.role) setRole(user.role)
+    }
+  }, [])
+
+  // 根据角色过滤快捷操作
+  const quickActions = allQuickActions.filter((a) => {
+    if (a.adminOnly && role === 'coach') return false
+    return true
+  })
 
   const fetchData = React.useCallback(() => {
     const clubId = localStorage.getItem('currentClubId')
     if (!clubId) return
 
-    // 获取今日课程
+    // 获取当前用户信息
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+
+    // 构建课程查询参数
     const today = new Date()
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
 
-    fetch(`/api/courses?clubId=${clubId}&startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`)
+    let courseUrl = `/api/courses?clubId=${clubId}&startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`
+    let statsUrl = `/api/statistics?clubId=${clubId}&period=month`
+
+    // 教练只能看自己的数据
+    if (user?.role === 'coach' && user?.id) {
+      courseUrl += `&coachId=${user.id}`
+      statsUrl += `&coachId=${user.id}`
+    }
+
+    // 获取今日课程
+    fetch(courseUrl)
       .then((res) => res.json())
       .then((data) => {
         setCourses(data)
@@ -48,7 +77,7 @@ export default function HomePage() {
       .catch(console.error)
 
     // 获取统计数据
-    fetch(`/api/statistics?clubId=${clubId}&period=month`)
+    fetch(statsUrl)
       .then((res) => res.json())
       .then((data) => {
         setStats((prev) => ({

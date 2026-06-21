@@ -81,9 +81,11 @@ export default function LessonsPage() {
   const loadOptions = React.useCallback(async () => {
     const clubId = localStorage.getItem('currentClubId')
     if (!clubId) return
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
     try {
       const [courseRes, studentRes, coachRes] = await Promise.all([
-        fetch(`/api/courses?clubId=${clubId}`),
+        fetch(`/api/courses?clubId=${clubId}${user?.role === 'coach' && user?.id ? `&coachId=${user.id}` : ''}`),
         fetch(`/api/students?clubId=${clubId}`),
         fetch(`/api/users?role=coach&clubId=${clubId}`),
       ])
@@ -92,7 +94,12 @@ export default function LessonsPage() {
       ])
       setCourses(courseData)
       setStudents(studentData)
-      setCoaches(coachData)
+      // 教练只能选自己
+      if (user?.role === 'coach' && user?.id) {
+        setCoaches(coachData.filter((c: Coach) => c.id === user.id))
+      } else {
+        setCoaches(coachData)
+      }
     } catch (e) {
       console.error('加载选项失败:', e)
     }
@@ -102,9 +109,20 @@ export default function LessonsPage() {
   const loadLessons = React.useCallback(async () => {
     const clubId = localStorage.getItem('currentClubId')
     if (!clubId) return
+
+    // 获取当前用户信息
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+
     setLoading(true)
     try {
       let params = `clubId=${clubId}`
+
+      // 教练只能看自己的课时
+      if (user?.role === 'coach' && user?.id) {
+        params += `&coachId=${user.id}`
+      }
+
       if (search) params += `&search=${encodeURIComponent(search)}`
       const res = await fetch(`/api/lessons?${params}`)
       const data = await res.json()
@@ -123,6 +141,17 @@ export default function LessonsPage() {
   React.useEffect(() => {
     loadOptions()
   }, [loadOptions])
+
+  // 教练角色自动选中自己
+  React.useEffect(() => {
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      const user = JSON.parse(stored)
+      if (user.role === 'coach' && user.id) {
+        setForm((prev) => ({ ...prev, coachId: String(user.id) }))
+      }
+    }
+  }, [])
 
   // 监听俱乐部切换
   React.useEffect(() => {
@@ -192,11 +221,13 @@ export default function LessonsPage() {
 
   // 确认课时
   const handleConfirm = async (lesson: LessonData) => {
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
     try {
       await fetch(`/api/lessons/${lesson.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'confirmed', confirmedById: 1 }),
+        body: JSON.stringify({ status: 'confirmed', confirmedById: user?.id || 1 }),
       })
       loadLessons()
     } catch (e) {

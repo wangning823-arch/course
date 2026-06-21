@@ -91,6 +91,8 @@ export default function SchedulePage() {
   const loadOptions = React.useCallback(async () => {
     const clubId = localStorage.getItem('currentClubId')
     if (!clubId) return
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
     try {
       const [subRes, coachRes, campusRes, studentRes] = await Promise.all([
         fetch(`/api/subjects?clubId=${clubId}`),
@@ -102,7 +104,12 @@ export default function SchedulePage() {
         subRes.json(), coachRes.json(), campusRes.json(), studentRes.json(),
       ])
       setSubjects(subData)
-      setCoaches(coachData)
+      // 教练只能选自己
+      if (user?.role === 'coach' && user?.id) {
+        setCoaches(coachData.filter((c: Coach) => c.id === user.id))
+      } else {
+        setCoaches(coachData)
+      }
       setCampuses(campusData)
       setStudents(studentData)
     } catch (e) {
@@ -114,11 +121,23 @@ export default function SchedulePage() {
   const loadCourses = React.useCallback(async () => {
     const clubId = localStorage.getItem('currentClubId')
     if (!clubId) return
+
+    // 获取当前用户信息
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+
     setLoading(true)
     try {
       const startDate = weekDates[0].toISOString()
       const endDate = new Date(weekDates[6].getTime() + 86400000 - 1).toISOString()
-      const res = await fetch(`/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`)
+      let url = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
+
+      // 教练只能看自己的课程
+      if (user?.role === 'coach' && user?.id) {
+        url += `&coachId=${user.id}`
+      }
+
+      const res = await fetch(url)
       const data = await res.json()
       setCourses(data)
     } catch (e) {
@@ -135,6 +154,17 @@ export default function SchedulePage() {
   React.useEffect(() => {
     loadOptions()
   }, [loadOptions])
+
+  // 教练角色自动选中自己
+  React.useEffect(() => {
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      const user = JSON.parse(stored)
+      if (user.role === 'coach' && user.id) {
+        setForm((prev) => ({ ...prev, coachId: String(user.id) }))
+      }
+    }
+  }, [])
 
   // 监听俱乐部切换
   React.useEffect(() => {

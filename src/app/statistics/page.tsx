@@ -21,9 +21,21 @@ export default function StatisticsPage() {
   const fetchStats = async () => {
     const clubId = localStorage.getItem('currentClubId')
     if (!clubId) return
+
+    // 获取当前用户信息
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+
     setLoading(true)
     try {
-      const res = await fetch(`/api/statistics?clubId=${clubId}&period=${period}`)
+      let url = `/api/statistics?clubId=${clubId}&period=${period}`
+
+      // 教练只能看自己的统计
+      if (user?.role === 'coach' && user?.id) {
+        url += `&coachId=${user.id}`
+      }
+
+      const res = await fetch(url)
       const data = await res.json()
       setStats(data)
     } catch (error) {

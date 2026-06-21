@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Home, Calendar, Timer, BarChart3, Settings, Users, Building2,
-  MapPin, BookOpen, GraduationCap, DollarSign, ChevronDown, ChevronLeft, X
+  MapPin, BookOpen, GraduationCap, DollarSign, ChevronDown, ChevronLeft
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -15,31 +15,55 @@ interface SidebarProps {
   onClose: () => void
 }
 
-const menuItems = [
+// 主菜单（所有角色都有）
+const mainMenuItems = [
   { icon: Home, label: '首页', href: '/' },
+]
+
+// 教练角色专属菜单
+const coachMenuItems = [
   { icon: Calendar, label: '排课管理', href: '/schedule' },
   { icon: Timer, label: '课时记录', href: '/lessons' },
   { icon: BarChart3, label: '课时统计', href: '/statistics' },
 ]
 
-const adminItems = [
-  { icon: Users, label: '用户管理', href: '/admin/users' },
-  { icon: Building2, label: '俱乐部管理', href: '/admin/clubs' },
-  { icon: MapPin, label: '校区管理', href: '/admin/campuses' },
-  { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
-  { icon: GraduationCap, label: '学员管理', href: '/admin/students' },
-  { icon: DollarSign, label: '教练定价', href: '/admin/coach-prices' },
+// 管理员角色菜单（club_admin + super_admin）
+const adminMenuItems = [
+  { icon: Calendar, label: '排课管理', href: '/schedule' },
+  { icon: Timer, label: '课时记录', href: '/lessons' },
+  { icon: BarChart3, label: '课时统计', href: '/statistics' },
 ]
+
+// 系统管理菜单
+const systemAdminItems = {
+  super_admin: [
+    { icon: Users, label: '用户管理', href: '/admin/users' },
+    { icon: Building2, label: '俱乐部管理', href: '/admin/clubs' },
+    { icon: MapPin, label: '校区管理', href: '/admin/campuses' },
+    { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
+    { icon: GraduationCap, label: '学员管理', href: '/admin/students' },
+    { icon: DollarSign, label: '教练定价', href: '/admin/coach-prices' },
+  ],
+  club_admin: [
+    { icon: Users, label: '用户管理', href: '/admin/users' },
+    { icon: MapPin, label: '校区管理', href: '/admin/campuses' },
+    { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
+    { icon: GraduationCap, label: '学员管理', href: '/admin/students' },
+    { icon: DollarSign, label: '教练定价', href: '/admin/coach-prices' },
+  ],
+}
 
 export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
   const pathname = usePathname()
   const [adminOpen, setAdminOpen] = React.useState(true)
   const [logoText, setLogoText] = React.useState('课时管理系统')
+  const [role, setRole] = React.useState('')
 
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
     if (stored) {
       const user = JSON.parse(stored)
+      setRole(user.role || '')
       if (user.role !== 'super_admin') {
         fetch('/api/clubs')
           .then((res) => res.json())
@@ -52,6 +76,19 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
       }
     }
   }, [])
+
+  // 根据角色选择菜单
+  const getMainItems = () => {
+    if (role === 'coach') return [...mainMenuItems, ...coachMenuItems]
+    return [...mainMenuItems, ...adminMenuItems]
+  }
+
+  const getSystemItems = () => {
+    return systemAdminItems[role as keyof typeof systemAdminItems] || []
+  }
+
+  const mainItems = getMainItems()
+  const sysItems = getSystemItems()
 
   return (
     <>
@@ -68,9 +105,7 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
       <aside
         className={cn(
           'fixed left-0 top-0 bottom-0 z-40 bg-[#001529] text-white flex flex-col',
-          // 宽度：桌面端 open=224px, close=64px；移动端始终 224px
           open ? 'w-56' : 'md:w-16',
-          // 移动端用 translate 控制显隐；桌面端始终显示
           'md:translate-x-0 transition-all duration-300',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
@@ -90,7 +125,8 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
         {/* Menu */}
         <nav className="flex-1 overflow-y-auto py-2">
           <ul className="space-y-1">
-            {menuItems.map((item) => {
+            {/* 主菜单 */}
+            {mainItems.map((item) => {
               const isActive = pathname === item.href
               return (
                 <li key={item.href}>
@@ -109,45 +145,47 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
               )
             })}
 
-            {/* Admin submenu */}
-            <li>
-              <button
-                onClick={() => setAdminOpen(!adminOpen)}
-                className={cn(
-                  'flex items-center gap-3 px-4 py-2.5 text-sm w-full transition-colors',
-                  'text-white/60 hover:bg-white/5 hover:text-white'
+            {/* 系统管理子菜单 - 仅管理员 */}
+            {sysItems.length > 0 && (
+              <li>
+                <button
+                  onClick={() => setAdminOpen(!adminOpen)}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-2.5 text-sm w-full transition-colors',
+                    'text-white/60 hover:bg-white/5 hover:text-white'
+                  )}
+                >
+                  <Settings className="h-5 w-5 shrink-0" />
+                  {open && (
+                    <>
+                      <span className="flex-1 text-left">系统管理</span>
+                      <ChevronDown className={cn('h-4 w-4 transition-transform', adminOpen && 'rotate-180')} />
+                    </>
+                  )}
+                </button>
+                {adminOpen && open && (
+                  <ul className="ml-4 mt-1 space-y-1">
+                    {sysItems.map((item) => {
+                      const isActive = pathname === item.href
+                      return (
+                        <li key={item.href}>
+                          <Link
+                            href={item.href}
+                            className={cn(
+                              'flex items-center gap-3 px-4 py-2 text-sm rounded-md transition-colors',
+                              isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
+                            )}
+                          >
+                            <item.icon className="h-4 w-4 shrink-0" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
                 )}
-              >
-                <Settings className="h-5 w-5 shrink-0" />
-                {open && (
-                  <>
-                    <span className="flex-1 text-left">系统管理</span>
-                    <ChevronDown className={cn('h-4 w-4 transition-transform', adminOpen && 'rotate-180')} />
-                  </>
-                )}
-              </button>
-              {adminOpen && open && (
-                <ul className="ml-4 mt-1 space-y-1">
-                  {adminItems.map((item) => {
-                    const isActive = pathname === item.href
-                    return (
-                      <li key={item.href}>
-                        <Link
-                          href={item.href}
-                          className={cn(
-                            'flex items-center gap-3 px-4 py-2 text-sm rounded-md transition-colors',
-                            isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
-                          )}
-                        >
-                          <item.icon className="h-4 w-4 shrink-0" />
-                          <span>{item.label}</span>
-                        </Link>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </li>
+              </li>
+            )}
           </ul>
         </nav>
       </aside>

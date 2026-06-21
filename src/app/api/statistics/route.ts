@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const period = searchParams.get('period') || 'month'
   const clubId = searchParams.get('clubId')
+  const coachId = searchParams.get('coachId')
 
   // 基础过滤条件：按俱乐部过滤课程
   const baseWhere: any = {
@@ -13,6 +14,10 @@ export async function GET(request: NextRequest) {
   }
   if (clubId) {
     baseWhere.course = { clubId: parseInt(clubId) }
+  }
+  // 按教练过滤
+  if (coachId) {
+    baseWhere.coachId = parseInt(coachId)
   }
 
   // 计算时间范围
