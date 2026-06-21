@@ -43,13 +43,16 @@ export async function GET(request: NextRequest) {
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     return {
       id: c.id,
+      subjectId: c.subjectId,
       subject: c.subject.name,
+      coachId: c.coachId,
       coach: c.coach.name,
       campus: c.campus?.name || '-',
       date: dateStr,
       startTime: c.startTime,
       endTime: c.endTime,
       students: c.students.map((s) => s.student.name).join('、'),
+      studentIds: c.students.map((s) => s.studentId),
       status: c.status,
       teachingMode: c.teachingMode,
       location: c.location,

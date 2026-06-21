@@ -78,10 +78,13 @@ export default function HomePage() {
     const user = stored ? JSON.parse(stored) : null
 
     const today = new Date()
-    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59)
+    const year = today.getFullYear()
+    const month = String(today.getMonth() + 1).padStart(2, '0')
+    const day = String(today.getDate()).padStart(2, '0')
+    const startDate = `${year}-${month}-${day}`
+    const endDate = startDate
 
-    let courseUrl = `/api/courses?clubId=${clubId}&startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`
+    let courseUrl = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
     let statsUrl = `/api/statistics?clubId=${clubId}&period=month`
 
     if (user?.role === 'coach' && user?.id) {
@@ -90,7 +93,7 @@ export default function HomePage() {
     }
 
     fetch(courseUrl)
-      .then((res) => res.json())
+      .then((res) => res.ok ? res.json() : Promise.reject(res))
       .then((data) => {
         setCourses(data)
         setStats((prev) => ({ ...prev, todayCourses: data.length }))
@@ -98,7 +101,7 @@ export default function HomePage() {
       .catch(console.error)
 
     fetch(statsUrl)
-      .then((res) => res.json())
+      .then((res) => res.ok ? res.json() : Promise.reject(res))
       .then((data) => {
         setStats((prev) => ({
           ...prev,

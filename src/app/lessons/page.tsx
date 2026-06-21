@@ -33,15 +33,20 @@ interface LessonData {
 
 interface CourseOption {
   id: number
+  subjectId: number
   subject: string
+  coachId: number
   coach: string
   date: string
   startTime: string
+  endTime: string
   students: string
+  studentIds: number[]
 }
 
 interface Student { id: number; name: string }
 interface Coach { id: number; name: string }
+interface Subject { id: number; name: string }
 
 export default function LessonsPage() {
   const [lessons, setLessons] = React.useState<LessonData[]>([])
@@ -56,10 +61,13 @@ export default function LessonsPage() {
   const [courses, setCourses] = React.useState<CourseOption[]>([])
   const [students, setStudents] = React.useState<Student[]>([])
   const [coaches, setCoaches] = React.useState<Coach[]>([])
+  const [subjects, setSubjects] = React.useState<Subject[]>([])
 
   // 创建表单
   const [form, setForm] = React.useState({
     courseId: '',
+    subjectId: '',
+    scheduledDate: '',
     studentId: '',
     coachId: '',
     actualStart: '',
@@ -88,16 +96,18 @@ export default function LessonsPage() {
       const studentUrl = user?.role === 'coach' && user?.id
         ? `/api/students?clubId=${clubId}&coachId=${user.id}`
         : `/api/students?clubId=${clubId}`
-      const [courseRes, studentRes, coachRes] = await Promise.all([
+      const [courseRes, studentRes, coachRes, subjectRes] = await Promise.all([
         fetch(`/api/courses?clubId=${clubId}${user?.role === 'coach' && user?.id ? `&coachId=${user.id}` : ''}`),
         fetch(studentUrl),
         fetch(`/api/users?role=coach&clubId=${clubId}`),
+        fetch(`/api/subjects?clubId=${clubId}`),
       ])
-      const [courseData, studentData, coachData] = await Promise.all([
-        courseRes.json(), studentRes.json(), coachRes.json(),
+      const [courseData, studentData, coachData, subjectData] = await Promise.all([
+        courseRes.json(), studentRes.json(), coachRes.json(), subjectRes.json(),
       ])
       setCourses(courseData)
       setStudents(studentData)
+      setSubjects(subjectData)
       // 教练只能选自己
       if (user?.role === 'coach' && user?.id) {
         setCoaches(coachData.filter((c: Coach) => c.id === user.id))
@@ -146,17 +156,6 @@ export default function LessonsPage() {
     loadOptions()
   }, [loadOptions])
 
-  // 教练角色自动选中自己
-  React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      if (user.role === 'coach' && user.id) {
-        setForm((prev) => ({ ...prev, coachId: String(user.id) }))
-      }
-    }
-  }, [])
-
   // 监听俱乐部切换
   React.useEffect(() => {
     const handleClubChanged = () => {
@@ -169,16 +168,26 @@ export default function LessonsPage() {
 
   // 创建课时记录
   const handleCreate = async () => {
-    if (!form.courseId || !form.studentId || !form.coachId) {
-      alert('请选择课程、学员和教练')
-      return
+    // 选择课程时，只需学员和教练；不选课程时，需要科目、日期、学员和教练
+    if (form.courseId) {
+      if (!form.studentId || !form.coachId) {
+        alert('请选择学员和教练')
+        return
+      }
+    } else {
+      if (!form.subjectId || !form.scheduledDate || !form.studentId || !form.coachId) {
+        alert('请选择科目、日期、学员和教练')
+        return
+      }
     }
     try {
       const res = await fetch('/api/lessons', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          courseId: form.courseId,
+          courseId: form.courseId || null,
+          subjectId: form.subjectId || null,
+          scheduledDate: form.scheduledDate || null,
           studentId: form.studentId,
           coachId: form.coachId,
           actualStart: form.actualStart || null,
@@ -253,8 +262,17 @@ export default function LessonsPage() {
   }
 
   const resetForm = () => {
+    // 教练角色保留自己的选中
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+    const defaultCoachId = user?.role === 'coach' && user?.id ? String(user.id) : ''
+
+    const today = new Date()
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
     setForm({
-      courseId: '', studentId: '', coachId: '',
+      courseId: '', subjectId: '', scheduledDate: todayStr,
+      studentId: '', coachId: defaultCoachId,
       actualStart: '', actualEnd: '', durationMinutes: '60',
       content: '', performance: '', homework: '',
     })
@@ -286,7 +304,11 @@ export default function LessonsPage() {
           <ClubSelector />
           <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm() }}>
           <DialogTrigger asChild>
-            <Button>
+            <Button onClick={() => {
+              const today = new Date()
+              const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+              setForm(prev => ({ ...prev, scheduledDate: todayStr }))
+            }}>
               <Plus className="h-4 w-4 mr-1" />
               记录课时
             </Button>
@@ -298,9 +320,31 @@ export default function LessonsPage() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">选择课程 *</label>
-                <Select value={form.courseId} onValueChange={(v) => setForm({ ...form, courseId: v })}>
-                  <SelectTrigger><SelectValue placeholder="选择已有课程" /></SelectTrigger>
+                <label className="text-sm font-medium">选择课程（可选）</label>
+                <Select value={form.courseId} onValueChange={(v) => {
+                  if (!v) {
+                    // 取消选择课程，日期默认当天
+                    const today = new Date()
+                    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+                    setForm({ ...form, courseId: '', subjectId: '', scheduledDate: todayStr })
+                    return
+                  }
+                  // 选中课程时，自动填充所有字段
+                  const course = courses.find(c => c.id === parseInt(v))
+                  if (course) {
+                    setForm({
+                      ...form,
+                      courseId: v,
+                      subjectId: String(course.subjectId),
+                      scheduledDate: course.date,
+                      coachId: String(course.coachId),
+                      studentId: course.studentIds.length === 1 ? String(course.studentIds[0]) : form.studentId,
+                      actualStart: course.startTime,
+                      actualEnd: course.endTime,
+                    })
+                  }
+                }}>
+                  <SelectTrigger><SelectValue placeholder="不选课程可直接记录课时" /></SelectTrigger>
                   <SelectContent>
                     {courses.map((c) => (
                       <SelectItem key={c.id} value={String(c.id)}>
@@ -310,6 +354,29 @@ export default function LessonsPage() {
                   </SelectContent>
                 </Select>
               </div>
+              {!form.courseId && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">科目 *</label>
+                    <Select value={form.subjectId} onValueChange={(v) => setForm({ ...form, subjectId: v })}>
+                      <SelectTrigger><SelectValue placeholder="选择科目" /></SelectTrigger>
+                      <SelectContent>
+                        {subjects.map((s) => (
+                          <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">日期 *</label>
+                    <Input
+                      type="date"
+                      value={form.scheduledDate}
+                      onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">学员 *</label>
@@ -340,7 +407,18 @@ export default function LessonsPage() {
                   <Input
                     type="time"
                     value={form.actualStart}
-                    onChange={(e) => setForm({ ...form, actualStart: e.target.value })}
+                    onChange={(e) => {
+                      const start = e.target.value
+                      const end = form.actualEnd
+                      let duration = form.durationMinutes
+                      if (start && end) {
+                        const [sh, sm] = start.split(':').map(Number)
+                        const [eh, em] = end.split(':').map(Number)
+                        const mins = (eh * 60 + em) - (sh * 60 + sm)
+                        if (mins > 0) duration = String(mins)
+                      }
+                      setForm({ ...form, actualStart: start, durationMinutes: duration })
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
@@ -348,7 +426,18 @@ export default function LessonsPage() {
                   <Input
                     type="time"
                     value={form.actualEnd}
-                    onChange={(e) => setForm({ ...form, actualEnd: e.target.value })}
+                    onChange={(e) => {
+                      const end = e.target.value
+                      const start = form.actualStart
+                      let duration = form.durationMinutes
+                      if (start && end) {
+                        const [sh, sm] = start.split(':').map(Number)
+                        const [eh, em] = end.split(':').map(Number)
+                        const mins = (eh * 60 + em) - (sh * 60 + sm)
+                        if (mins > 0) duration = String(mins)
+                      }
+                      setForm({ ...form, actualEnd: end, durationMinutes: duration })
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
