@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const isLoginPage = pathname === '/login'
 
   // 教练不允许访问的管理页面
-  const coachBlockedPaths = ['/admin/users', '/admin/clubs', '/admin/campuses', '/admin/subjects', '/admin/coach-prices']
+  const coachBlockedPaths = ['/admin/users', '/admin/clubs', '/admin/campuses', '/admin/coach-prices']
 
   // 系统管理员不允许访问的页面（业务操作和俱乐部级别管理）
   const superAdminBlockedPaths = ['/schedule', '/lessons', '/admin/campuses', '/admin/subjects', '/admin/coach-prices']

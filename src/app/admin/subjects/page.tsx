@@ -21,13 +21,16 @@ export default function SubjectsPage() {
   })
   const [editId, setEditId] = React.useState<number | null>(null)
   const [role, setRole] = React.useState('')
+  const [userId, setUserId] = React.useState<number | null>(null)
   const [userClubId, setUserClubId] = React.useState('')
+  const [showPrivate, setShowPrivate] = React.useState(false)
 
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
     if (stored) {
       const user = JSON.parse(stored)
       setRole(user.role || '')
+      setUserId(user.id || null)
       if (user.clubId) setUserClubId(String(user.clubId))
     }
   }, [])
@@ -37,8 +40,24 @@ export default function SubjectsPage() {
   const fetchSubjects = async () => {
     setLoading(true)
     try {
-      const clubId = isClubAdmin ? userClubId : localStorage.getItem('currentClubId')
-      const url = clubId ? `/api/subjects?clubId=${clubId}` : '/api/subjects'
+      let url: string
+      if (showPrivate && role === 'coach' && userId) {
+        // 教练查看私人科目
+        url = `/api/subjects?clubId=private&coachId=${userId}`
+      } else {
+        const clubId = isClubAdmin ? userClubId : localStorage.getItem('currentClubId')
+        // 教练：传递 coachId 以加载所有俱乐部科目 + 私人科目
+        // 管理员：按俱乐部过滤
+        if (role === 'coach' && userId) {
+          url = clubId && clubId !== 'all'
+            ? `/api/subjects?clubId=${clubId}&coachId=${userId}`
+            : `/api/subjects?coachId=${userId}`
+        } else {
+          url = clubId && clubId !== 'all'
+            ? `/api/subjects?clubId=${clubId}`
+            : '/api/subjects'
+        }
+      }
       const res = await authFetch(url)
       const data = await res.json()
       setSubjects(data)
@@ -70,7 +89,7 @@ export default function SubjectsPage() {
     if (isClubAdmin && !userClubId) return
     fetchSubjects()
     fetchClubs()
-  }, [isClubAdmin, userClubId])
+  }, [isClubAdmin, userClubId, role])
 
   // 监听俱乐部切换
   React.useEffect(() => {
@@ -81,11 +100,29 @@ export default function SubjectsPage() {
     return () => window.removeEventListener('clubChanged', handleClubChanged)
   }, [])
 
+  // 监听 showPrivate 变化，重新加载科目
+  React.useEffect(() => {
+    if (role === 'coach') {
+      fetchSubjects()
+    }
+  }, [showPrivate])
+
   const handleSubmit = async () => {
     try {
-      // 俱乐部管理员强制用自己的 clubId
-      const submitClubId = isClubAdmin ? userClubId : formData.clubId
-      const submitData = { ...formData, clubId: submitClubId }
+      let submitData: any
+      if (showPrivate && role === 'coach' && userId) {
+        // 创建/编辑私人科目
+        submitData = {
+          ...formData,
+          clubId: null,
+          coachId: userId,
+        }
+      } else {
+        // 俱乐部管理员强制用自己的 clubId
+        const submitClubId = isClubAdmin ? userClubId : formData.clubId
+        submitData = { ...formData, clubId: submitClubId }
+      }
+
       if (editId) {
         await authFetch(`/api/subjects/${editId}`, {
           method: 'PUT',
@@ -135,6 +172,27 @@ export default function SubjectsPage() {
         <h1 className="text-2xl font-bold">科目管理</h1>
         <div className="flex items-center gap-2">
           <ClubSelector />
+          {/* 教练可以切换俱乐部科目和私人科目 */}
+          {role === 'coach' && (
+            <div className="flex items-center gap-2 border rounded-md p-1">
+              <Button
+                variant={!showPrivate ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setShowPrivate(false)}
+                className="h-7 text-xs"
+              >
+                俱乐部科目
+              </Button>
+              <Button
+                variant={showPrivate ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setShowPrivate(true)}
+                className="h-7 text-xs"
+              >
+                私人科目
+              </Button>
+            </div>
+          )}
           <Button variant="outline" onClick={fetchSubjects}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新
@@ -151,21 +209,29 @@ export default function SubjectsPage() {
                 <DialogDescription>填写科目信息</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">所属俱乐部</label>
-                  {isClubAdmin ? (
-                    <Input value={clubs.find(c => c.id === parseInt(userClubId))?.name || ''} disabled className="bg-gray-50" />
-                  ) : (
-                    <Select value={formData.clubId} onValueChange={(v) => setFormData({ ...formData, clubId: v })}>
-                      <SelectTrigger><SelectValue placeholder="选择俱乐部" /></SelectTrigger>
-                      <SelectContent>
-                        {clubs.map((club) => (
-                          <SelectItem key={club.id} value={String(club.id)}>{club.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
+                {/* 私人科目不显示俱乐部选择器 */}
+                {!(showPrivate && role === 'coach') && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">所属俱乐部</label>
+                    {isClubAdmin ? (
+                      <Input value={clubs.find(c => c.id === parseInt(userClubId))?.name || ''} disabled className="bg-gray-50" />
+                    ) : (
+                      <Select value={formData.clubId} onValueChange={(v) => setFormData({ ...formData, clubId: v })}>
+                        <SelectTrigger><SelectValue placeholder="选择俱乐部" /></SelectTrigger>
+                        <SelectContent>
+                          {clubs.map((club) => (
+                            <SelectItem key={club.id} value={String(club.id)}>{club.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
+                {showPrivate && role === 'coach' && (
+                  <div className="p-2 bg-blue-50 rounded-md text-sm text-blue-700">
+                    这是您的私人科目，仅您可见，不关联任何俱乐部
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">科目名称</label>
                   <Input placeholder="请输入科目名称" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />

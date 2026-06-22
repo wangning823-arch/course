@@ -125,9 +125,11 @@ export default function SchedulePage() {
       const studentUrl = user?.role === 'coach' && user?.id
         ? `/api/students?clubId=${clubId}&coachId=${user.id}`
         : `/api/students?clubId=${clubId}`
+      // 选择具体俱乐部时，只加载该俱乐部的科目（不传 coachId，避免返回私人科目）
+      const subjectUrl = `/api/subjects?clubId=${clubId}`
       // 俱乐部管理员也能当教练，需要同时查询管理员列表
       const coachPromises = [
-        fetch(`/api/subjects?clubId=${clubId}`),
+        fetch(subjectUrl),
         fetch(`/api/users?role=coach&clubId=${clubId}`),
         fetch(`/api/campuses?clubId=${clubId}`),
         fetch(studentUrl),
@@ -179,8 +181,10 @@ export default function SchedulePage() {
       const studentUrl = user?.role === 'coach' && user?.id
         ? `/api/students?clubId=${targetClubId}&coachId=${user.id}`
         : `/api/students?clubId=${targetClubId}`
+      // 选择具体俱乐部时，只加载该俱乐部的科目（不传 coachId，避免返回私人科目）
+      const subjectUrl = `/api/subjects?clubId=${targetClubId}`
       const coachPromises = [
-        fetch(`/api/subjects?clubId=${targetClubId}`),
+        fetch(subjectUrl),
         fetch(`/api/users?role=coach&clubId=${targetClubId}`),
         fetch(`/api/campuses?clubId=${targetClubId}`),
         fetch(studentUrl),

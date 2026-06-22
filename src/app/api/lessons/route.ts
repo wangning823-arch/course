@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get('endDate')
   const coachId = searchParams.get('coachId')
   const clubId = searchParams.get('clubId')
+  const timeRange = searchParams.get('timeRange')
 
   const where: any = {}
   if (clubId) where.course = { clubId: parseInt(clubId) }
@@ -19,13 +20,55 @@ export async function GET(request: NextRequest) {
       { student: { name: { contains: search } } },
     ]
   }
-  if (startDate && endDate) {
+  if (coachId) where.coachId = parseInt(coachId)
+
+  // 处理时间范围
+  if (timeRange && timeRange !== 'all') {
+    const now = new Date()
+    let startDateFilter: Date | null = null
+    let endDateFilter: Date | null = null
+
+    switch (timeRange) {
+      case 'today':
+        startDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        endDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+        break
+      case 'week':
+        const dayOfWeek = now.getDay()
+        const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+        startDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset)
+        endDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - mondayOffset), 23, 59, 59)
+        break
+      case 'month':
+        startDateFilter = new Date(now.getFullYear(), now.getMonth(), 1)
+        endDateFilter = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+        break
+      case 'quarter':
+        const quarterStart = Math.floor(now.getMonth() / 3) * 3
+        startDateFilter = new Date(now.getFullYear(), quarterStart, 1)
+        endDateFilter = new Date(now.getFullYear(), quarterStart + 3, 0, 23, 59, 59)
+        break
+      case 'year':
+        startDateFilter = new Date(now.getFullYear(), 0, 1)
+        endDateFilter = new Date(now.getFullYear(), 11, 31, 23, 59, 59)
+        break
+    }
+
+    if (startDateFilter && endDateFilter) {
+      where.course = {
+        ...where.course,
+        scheduledDate: {
+          gte: startDateFilter,
+          lte: endDateFilter,
+        },
+      }
+    }
+  } else if (startDate && endDate) {
     where.createdAt = {
       gte: new Date(startDate),
       lte: new Date(endDate),
     }
   }
-  if (coachId) where.coachId = parseInt(coachId)
 
   const lessons = await prisma.lesson.findMany({
     where,

@@ -25,6 +25,7 @@ const coachMenuItems = [
   { icon: Calendar, label: '排课管理', href: '/schedule' },
   { icon: Timer, label: '课时记录', href: '/lessons' },
   { icon: BarChart3, label: '课时统计', href: '/statistics' },
+  { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
   { icon: GraduationCap, label: '学员管理', href: '/admin/students' },
 ]
 

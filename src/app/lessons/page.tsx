@@ -59,6 +59,9 @@ export default function LessonsPage() {
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [selectedLesson, setSelectedLesson] = React.useState<LessonData | null>(null)
+  const [timeRange, setTimeRange] = React.useState('month')
+  const [currentPage, setCurrentPage] = React.useState(1)
+  const pageSize = 20
 
   // 下拉选项
   const [courses, setCourses] = React.useState<CourseOption[]>([])
@@ -243,16 +246,22 @@ export default function LessonsPage() {
         params = `clubId=${clubId}`
       }
 
+      // 添加时间范围参数
+      if (timeRange !== 'all') {
+        params += `&timeRange=${timeRange}`
+      }
+
       if (search) params += `&search=${encodeURIComponent(search)}`
       const res = await fetch(`/api/lessons?${params}`)
       const data = await res.json()
       setLessons(data)
+      setCurrentPage(1) // 重新加载时重置到第一页
     } catch (e) {
       console.error('加载课时记录失败:', e)
     } finally {
       setLoading(false)
     }
-  }, [search])
+  }, [search, timeRange])
 
   React.useEffect(() => {
     loadLessons()
@@ -402,6 +411,27 @@ export default function LessonsPage() {
       l.coach?.includes(search) ||
       l.student?.includes(search)
   )
+
+  // 按日期逆序排列
+  const sortedLessons = [...filtered].sort((a, b) => {
+    if (a.date === b.date) return 0
+    return a.date > b.date ? -1 : 1
+  })
+
+  // 分页
+  const totalPages = Math.ceil(sortedLessons.length / pageSize)
+  const paginatedLessons = sortedLessons.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  )
+
+  // 计算总时长
+  const totalMinutes = sortedLessons.reduce((sum, l) => sum + (l.duration || 0), 0)
+  const totalHours = Math.floor(totalMinutes / 60)
+  const remainMinutes = totalMinutes % 60
+  const totalTimeDisplay = totalHours > 0
+    ? (remainMinutes > 0 ? `${totalHours}小时${remainMinutes}分钟` : `${totalHours}小时`)
+    : `${totalMinutes}分钟`
 
   return (
     <div className="space-y-4">
@@ -659,14 +689,31 @@ export default function LessonsPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="搜索科目、教练、学员..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
-            />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="flex items-center gap-2 flex-1">
+              <Search className="h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="搜索科目、教练、学员..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="max-w-sm"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Select value={timeRange} onValueChange={(v) => setTimeRange(v)}>
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部时间</SelectItem>
+                  <SelectItem value="today">今天</SelectItem>
+                  <SelectItem value="week">本周</SelectItem>
+                  <SelectItem value="month">本月</SelectItem>
+                  <SelectItem value="quarter">本季度</SelectItem>
+                  <SelectItem value="year">本年</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -678,7 +725,7 @@ export default function LessonsPage() {
                 <TableHead>教练</TableHead>
                 <TableHead className="hidden sm:table-cell">学员</TableHead>
                 <TableHead className="hidden md:table-cell">校区</TableHead>
-                <TableHead>时长</TableHead>
+                <TableHead>时长（{totalTimeDisplay}）</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>操作</TableHead>
               </TableRow>
@@ -688,12 +735,12 @@ export default function LessonsPage() {
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-8 text-gray-500">加载中...</TableCell>
                 </TableRow>
-              ) : filtered.length === 0 ? (
+              ) : paginatedLessons.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-8 text-gray-500">暂无课时记录</TableCell>
                 </TableRow>
               ) : (
-                filtered.map((lesson) => (
+                paginatedLessons.map((lesson) => (
                   <TableRow key={lesson.id}>
                     <TableCell>{lesson.date}</TableCell>
                     <TableCell>{lesson.subject}</TableCell>
@@ -726,6 +773,55 @@ export default function LessonsPage() {
               )}
             </TableBody>
           </Table>
+
+          {/* 分页控件 */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <div className="text-sm text-gray-500">
+                共 {sortedLessons.length} 条记录，第 {currentPage}/{totalPages} 页
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  上一页
+                </Button>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number
+                  if (totalPages <= 5) {
+                    pageNum = i + 1
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i
+                  } else {
+                    pageNum = currentPage - 2 + i
+                  }
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setCurrentPage(pageNum)}
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  下一页
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
