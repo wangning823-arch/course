@@ -14,13 +14,15 @@ import { authFetch } from '@/lib/fetch-client'
 const roleLabels: Record<string, string> = {
   super_admin: '系统管理员',
   club_admin: '俱乐部管理员',
-  coach: '教练',
+  full_time_coach: '全职教练',
+  part_time_coach: '兼职教练',
 }
 
-const roleColors: Record<string, 'default' | 'success' | 'warning'> = {
+const roleColors: Record<string, 'default' | 'success' | 'warning' | 'primary'> = {
   super_admin: 'default',
   club_admin: 'success',
-  coach: 'warning',
+  full_time_coach: 'primary',
+  part_time_coach: 'warning',
 }
 
 interface Club { id: number; name: string }
@@ -30,7 +32,7 @@ export default function UsersPage() {
   const [clubs, setClubs] = React.useState<Club[]>([])
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
-  const [formData, setFormData] = React.useState({ name: '', phone: '', role: 'coach', password: '', clubId: '' })
+  const [formData, setFormData] = React.useState({ name: '', phone: '', role: 'part_time_coach', password: '', clubId: '' })
   const [editId, setEditId] = React.useState<number | null>(null)
   const [currentUser, setCurrentUser] = React.useState<any>(null)
   const [createdPassword, setCreatedPassword] = React.useState('')
@@ -55,7 +57,10 @@ export default function UsersPage() {
       return [{ value: 'club_admin', label: '俱乐部管理员' }]
     }
     if (currentUser.role === 'club_admin') {
-      return [{ value: 'coach', label: '教练' }]
+      return [
+        { value: 'full_time_coach', label: '全职教练' },
+        { value: 'part_time_coach', label: '兼职教练' },
+      ]
     }
     return []
   }, [currentUser])
@@ -174,7 +179,7 @@ export default function UsersPage() {
         }
       }
       setDialogOpen(false)
-      setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'coach', password: '', clubId: '' })
+      setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'part_time_coach', password: '', clubId: '' })
       setEditId(null)
       fetchUsers(filterClubId === 'all' ? '' : filterClubId)
     } catch (error) {
@@ -235,7 +240,7 @@ export default function UsersPage() {
           {availableRoles.length > 0 && (
             <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setPhoneExists(false); setExistingUserName('') } }}>
               <DialogTrigger asChild>
-                <Button onClick={() => { setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'coach', password: '', clubId: isClubAdminLocked ? String(currentUser?.clubId || '') : '' }); setEditId(null); setCreatedPassword('') }}>
+                <Button onClick={() => { setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'part_time_coach', password: '', clubId: isClubAdminLocked ? String(currentUser?.clubId || '') : '' }); setEditId(null); setCreatedPassword('') }}>
                   <Plus className="h-4 w-4 mr-1" />添加用户
                 </Button>
               </DialogTrigger>

@@ -23,7 +23,6 @@ export default function SubjectsPage() {
   const [role, setRole] = React.useState('')
   const [userId, setUserId] = React.useState<number | null>(null)
   const [userClubId, setUserClubId] = React.useState('')
-  const [showPrivate, setShowPrivate] = React.useState(false)
 
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -36,27 +35,20 @@ export default function SubjectsPage() {
   }, [])
 
   const isClubAdmin = role === 'club_admin'
+  const isPartTimeCoach = role === 'part_time_coach'
 
   const fetchSubjects = async () => {
     setLoading(true)
     try {
       let url: string
-      if (showPrivate && role === 'coach' && userId) {
-        // 教练查看私人科目
+      if (isPartTimeCoach && userId) {
+        // 兼职教练只看私人科目
         url = `/api/subjects?clubId=private&coachId=${userId}`
       } else {
         const clubId = isClubAdmin ? userClubId : localStorage.getItem('currentClubId')
-        // 教练：传递 coachId 以加载所有俱乐部科目 + 私人科目
-        // 管理员：按俱乐部过滤
-        if (role === 'coach' && userId) {
-          url = clubId && clubId !== 'all'
-            ? `/api/subjects?clubId=${clubId}&coachId=${userId}`
-            : `/api/subjects?coachId=${userId}`
-        } else {
-          url = clubId && clubId !== 'all'
-            ? `/api/subjects?clubId=${clubId}`
-            : '/api/subjects'
-        }
+        url = clubId && clubId !== 'all'
+          ? `/api/subjects?clubId=${clubId}`
+          : '/api/subjects'
       }
       const res = await authFetch(url)
       const data = await res.json()
@@ -100,25 +92,18 @@ export default function SubjectsPage() {
     return () => window.removeEventListener('clubChanged', handleClubChanged)
   }, [])
 
-  // 监听 showPrivate 变化，重新加载科目
-  React.useEffect(() => {
-    if (role === 'coach') {
-      fetchSubjects()
-    }
-  }, [showPrivate])
-
   const handleSubmit = async () => {
     try {
       let submitData: any
-      if (showPrivate && role === 'coach' && userId) {
-        // 创建/编辑私人科目
+      if (isPartTimeCoach && userId) {
+        // 兼职教练只能创建/编辑私人科目
         submitData = {
           ...formData,
           clubId: null,
           coachId: userId,
         }
       } else {
-        // 俱乐部管理员强制用自己的 clubId
+        // 俱乐部管理员/全职教练强制用自己的 clubId
         const submitClubId = isClubAdmin ? userClubId : formData.clubId
         submitData = { ...formData, clubId: submitClubId }
       }
@@ -157,7 +142,7 @@ export default function SubjectsPage() {
 
   const handleEdit = (subject: any) => {
     setFormData({
-      clubId: isClubAdmin ? userClubId : String(subject.clubId || ''),
+      clubId: isPartTimeCoach ? '' : (isClubAdmin ? userClubId : String(subject.clubId || '')),
       name: subject.name,
       category: subject.category || '球类',
       durationMinutes: String(subject.durationMinutes || 60),
@@ -171,27 +156,9 @@ export default function SubjectsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">科目管理</h1>
         <div className="flex items-center gap-2">
-          <ClubSelector />
-          {/* 教练可以切换俱乐部科目和私人科目 */}
-          {role === 'coach' && (
-            <div className="flex items-center gap-2 border rounded-md p-1">
-              <Button
-                variant={!showPrivate ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setShowPrivate(false)}
-                className="h-7 text-xs"
-              >
-                俱乐部科目
-              </Button>
-              <Button
-                variant={showPrivate ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setShowPrivate(true)}
-                className="h-7 text-xs"
-              >
-                私人科目
-              </Button>
-            </div>
+          {!isPartTimeCoach && <ClubSelector />}
+          {isPartTimeCoach && (
+            <span className="text-sm text-gray-500">私人科目</span>
           )}
           <Button variant="outline" onClick={fetchSubjects}>
             <RefreshCw className="h-4 w-4 mr-1" />
@@ -209,8 +176,8 @@ export default function SubjectsPage() {
                 <DialogDescription>填写科目信息</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                {/* 私人科目不显示俱乐部选择器 */}
-                {!(showPrivate && role === 'coach') && (
+                {/* 兼职教练只创建私人科目，不显示俱乐部选择器 */}
+                {!isPartTimeCoach && (
                   <div className="space-y-2">
                     <label className="text-sm font-medium">所属俱乐部</label>
                     {isClubAdmin ? (
@@ -227,7 +194,7 @@ export default function SubjectsPage() {
                     )}
                   </div>
                 )}
-                {showPrivate && role === 'coach' && (
+                {isPartTimeCoach && (
                   <div className="p-2 bg-blue-50 rounded-md text-sm text-blue-700">
                     这是您的私人科目，仅您可见，不关联任何俱乐部
                   </div>

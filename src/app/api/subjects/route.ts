@@ -75,6 +75,10 @@ export async function POST(request: NextRequest) {
 
   if (clubId === null || clubId === undefined || clubId === '') {
     // 私人科目：clubId 为 null，coachId 为当前用户
+    // 全职教练不能创建私人科目
+    if (authUser?.role === 'full_time_coach') {
+      return NextResponse.json({ error: '全职教练不能创建私人科目' }, { status: 403 })
+    }
     finalClubId = null
     finalCoachId = authUser?.userId || (coachId ? parseInt(coachId) : null)
   } else {

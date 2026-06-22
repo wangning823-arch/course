@@ -20,8 +20,17 @@ const mainMenuItems = [
   { icon: Home, label: '首页', href: '/' },
 ]
 
-// 教练角色专属菜单
-const coachMenuItems = [
+// 兼职教练角色专属菜单
+const partTimeCoachMenuItems = [
+  { icon: Calendar, label: '排课管理', href: '/schedule' },
+  { icon: Timer, label: '课时记录', href: '/lessons' },
+  { icon: BarChart3, label: '课时统计', href: '/statistics' },
+  { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
+  { icon: GraduationCap, label: '学员管理', href: '/admin/students' },
+]
+
+// 全职教练角色菜单（不能访问系统管理）
+const fullTimeCoachMenuItems = [
   { icon: Calendar, label: '排课管理', href: '/schedule' },
   { icon: Timer, label: '课时记录', href: '/lessons' },
   { icon: BarChart3, label: '课时统计', href: '/statistics' },
@@ -85,7 +94,8 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
 
   // 根据角色选择菜单
   const getMainItems = () => {
-    if (role === 'coach') return [...mainMenuItems, ...coachMenuItems]
+    if (role === 'part_time_coach') return [...mainMenuItems, ...partTimeCoachMenuItems]
+    if (role === 'full_time_coach') return [...mainMenuItems, ...fullTimeCoachMenuItems]
     if (role === 'super_admin') return mainMenuItems // 系统管理员只有首页
     return [...mainMenuItems, ...adminMenuItems]
   }

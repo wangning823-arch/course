@@ -19,7 +19,7 @@ model User {
   gender        Int?      // 性别：0未知 1男 2女
   birthDate     DateTime? // 出生日期
   passwordHash  String?   // 密码哈希
-  role          String    // 角色：super_admin/club_admin/coach
+  role          String    // 角色：super_admin/club_admin/full_time_coach/part_time_coach
   status        Int       @default(1) // 状态：0禁用 1启用
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

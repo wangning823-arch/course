@@ -101,25 +101,26 @@ export default function LessonsPage() {
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
     try {
-      const isCoach = user?.role === 'coach' && user?.id
+      const isPartTimeCoach = user?.role === 'part_time_coach' && user?.id
+      const clubFilter = isPartTimeCoach && clubId && clubId !== 'all' ? `&clubId=${clubId}` : ''
       const fetchPromises = [
-        // 教练：不按俱乐部过滤课程，只看自己的；管理员：按俱乐部过滤
-        fetch(isCoach
-          ? `/api/courses?coachId=${user.id}`
+        // 兼职教练：只看自己的课程，选择具体俱乐部时按俱乐部过滤；管理员/全职教练：按俱乐部过滤
+        fetch(isPartTimeCoach
+          ? `/api/courses?coachId=${user.id}${clubFilter}`
           : `/api/courses?clubId=${clubId}`),
-        // 教练：不按俱乐部过滤学员；管理员：按俱乐部过滤
-        fetch(isCoach
-          ? `/api/students?clubId=all&coachId=${user.id}`
+        // 兼职教练：只看自己的学员，选择具体俱乐部时按俱乐部过滤；管理员/全职教练：按俱乐部过滤
+        fetch(isPartTimeCoach
+          ? `/api/students?coachId=${user.id}${clubFilter || '&clubId=all'}`
           : `/api/students?clubId=${clubId}`),
-        fetch(`/api/users?role=coach&clubId=${clubId}`),
-        // 教练：加载所有所属俱乐部的科目+私人科目；管理员：按俱乐部过滤
-        fetch(isCoach
-          ? `/api/subjects?coachId=${user.id}`
+        fetch(`/api/users?role=part_time_coach,full_time_coach&clubId=${clubId}`),
+        // 兼职教练：加载所属俱乐部的科目+私人科目，选择具体俱乐部时按俱乐部过滤；管理员/全职教练：按俱乐部过滤
+        fetch(isPartTimeCoach
+          ? `/api/subjects?coachId=${user.id}${clubFilter}`
           : `/api/subjects?clubId=${clubId}`),
         // 加载俱乐部列表（供表单选择）
-        isCoach ? authFetch('/api/auth/me/clubs') : fetch(`/api/clubs`),
+        isPartTimeCoach ? authFetch('/api/auth/me/clubs') : fetch(`/api/clubs`),
       ]
-      if (user?.role === 'club_admin') {
+      if (user?.role === 'club_admin' || user?.role === 'full_time_coach') {
         fetchPromises.push(fetch(`/api/users?role=club_admin&clubId=${clubId}`))
       }
       const [courseRes, studentRes, coachRes, subjectRes, clubRes, adminRes] = await Promise.all(fetchPromises)
@@ -150,8 +151,8 @@ export default function LessonsPage() {
       setStudents(studentData)
       setSubjects(subjectData)
       setClubs(clubData)
-      // 教练只能选自己；俱乐部管理员可以选所有教练+管理员
-      if (user?.role === 'coach' && user?.id) {
+      // 兼职教练只能选自己；俱乐部管理员/全职教练可以选所有教练+管理员
+      if (isPartTimeCoach) {
         // 确保当前教练在列表中（即使不属于当前俱乐部）
         const selfCoach = coachData.find((c: Coach) => c.id === user.id)
         if (selfCoach) {
@@ -184,11 +185,11 @@ export default function LessonsPage() {
       } else if (selectedClubId) {
         // 选择了具体俱乐部：加载该俱乐部的科目
         url = `/api/subjects?clubId=${selectedClubId}`
-      } else if (user?.role === 'coach' && user?.id) {
-        // 教练未选俱乐部：加载所有所属俱乐部的科目+私人科目
+      } else if (user?.role === 'part_time_coach' && user?.id) {
+        // 兼职教练未选俱乐部：加载所有所属俱乐部的科目+私人科目
         url = `/api/subjects?coachId=${user.id}`
       } else {
-        // 管理员未选俱乐部：不加载
+        // 管理员/全职教练未选俱乐部：不加载
         setSubjects([])
         return
       }
@@ -211,11 +212,11 @@ export default function LessonsPage() {
       if (selectedClubId === 'private') {
         // 私人课程：只显示教练的纯私有学员
         url = `/api/students?coachId=${user?.id}&clubId=private`
-      } else if (user?.role === 'coach' && user?.id) {
-        // 教练：按俱乐部过滤学员
+      } else if (user?.role === 'part_time_coach' && user?.id) {
+        // 兼职教练：按俱乐部过滤学员
         url = `/api/students?coachId=${user.id}&clubId=${selectedClubId || 'all'}`
       } else {
-        // 管理员：按俱乐部过滤
+        // 管理员/全职教练：按俱乐部过滤
         url = `/api/students?clubId=${selectedClubId}`
       }
       const res = await fetch(url)
@@ -238,9 +239,12 @@ export default function LessonsPage() {
     setLoading(true)
     try {
       let params: string
-      if (user?.role === 'coach' && user?.id) {
-        // 教练：不按俱乐部过滤，看所有俱乐部的课时
+      if (user?.role === 'part_time_coach' && user?.id) {
+        // 兼职教练：只看自己的课时，选择具体俱乐部时按俱乐部过滤
         params = `coachId=${user.id}`
+        if (clubId && clubId !== 'all') {
+          params += `&clubId=${clubId}`
+        }
       } else {
         if (!clubId) { setLoading(false); return }
         params = `clubId=${clubId}`
@@ -378,10 +382,10 @@ export default function LessonsPage() {
   }
 
   const resetForm = () => {
-    // 教练角色保留自己的选中
+    // 兼职教练角色保留自己的选中
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
-    const defaultCoachId = user?.role === 'coach' && user?.id ? String(user.id) : ''
+    const defaultCoachId = user?.role === 'part_time_coach' && user?.id ? String(user.id) : ''
 
     const today = new Date()
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -467,7 +471,7 @@ export default function LessonsPage() {
                     // 重新加载科目和学员（恢复为全部）
                     const stored = localStorage.getItem('user')
                     const user = stored ? JSON.parse(stored) : null
-                    if (user?.role === 'coach' && user?.id) {
+                    if (user?.role === 'part_time_coach' && user?.id) {
                       loadSubjectsByClub('')
                       loadStudentsByClub('')
                     }

@@ -15,8 +15,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (existingStudent.clubId !== authUser.clubId) {
       return NextResponse.json({ error: '无权修改其他俱乐部的学员' }, { status: 403 })
     }
-  } else if (authUser?.role === 'coach') {
-    // 教练只能编辑自己的私有学员
+  } else if (authUser?.role === 'part_time_coach') {
+    // 兼职教练只能编辑自己的私有学员
     if (existingStudent.coachId !== authUser.userId) {
       return NextResponse.json({ error: '无权修改其他教练的学员' }, { status: 403 })
     }
@@ -51,8 +51,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (existingStudent.clubId !== authUser.clubId) {
       return NextResponse.json({ error: '无权删除其他俱乐部的学员' }, { status: 403 })
     }
-  } else if (authUser?.role === 'coach') {
-    // 教练只能删除自己的私有学员
+  } else if (authUser?.role === 'part_time_coach') {
+    // 兼职教练只能删除自己的私有学员
     if (existingStudent.coachId !== authUser.userId) {
       return NextResponse.json({ error: '无权删除其他教练的学员' }, { status: 403 })
     }

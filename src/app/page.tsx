@@ -40,8 +40,8 @@ export default function HomePage() {
     }
   }, [])
 
-  // 教练的快捷操作
-  const coachQuickActions = [
+  // 兼职教练的快捷操作
+  const partTimeCoachQuickActions = [
     { label: '排课管理', href: '/schedule', color: 'bg-blue-500 hover:bg-blue-600' },
     { label: '记录课时', href: '/lessons', color: 'bg-green-500 hover:bg-green-600' },
     { label: '查看统计', href: '/statistics', color: 'bg-yellow-500 hover:bg-yellow-600' },
@@ -65,7 +65,7 @@ export default function HomePage() {
   ]
 
   const getQuickActions = () => {
-    if (role === 'coach') return coachQuickActions
+    if (role === 'part_time_coach') return partTimeCoachQuickActions
     if (role === 'super_admin') return superAdminQuickActions
     return adminQuickActions
   }
@@ -90,10 +90,14 @@ export default function HomePage() {
     let courseUrl: string
     let statsUrl: string
 
-    if (user?.role === 'coach' && user?.id) {
-      // 教练：不按俱乐部过滤，看所有俱乐部的课程和统计
+    if (user?.role === 'part_time_coach' && user?.id) {
+      // 兼职教练：只看自己的课程和统计，选择具体俱乐部时按俱乐部过滤
       courseUrl = `/api/courses?startDate=${startDate}&endDate=${endDate}&coachId=${user.id}`
       statsUrl = `/api/statistics?coachId=${user.id}&period=month`
+      if (clubId && clubId !== 'all') {
+        courseUrl += `&clubId=${clubId}`
+        statsUrl += `&clubId=${clubId}`
+      }
     } else {
       courseUrl = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
       statsUrl = `/api/statistics?clubId=${clubId}&period=month`

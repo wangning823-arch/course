@@ -32,14 +32,14 @@ export default function StatisticsPage() {
     try {
       let url = `/api/statistics?period=${period}`
 
-      // 教练：默认看自己所有俱乐部的统计，选择具体俱乐部时按俱乐部过滤
-      if (user?.role === 'coach' && user?.id) {
+      // 兼职教练：默认看自己所有俱乐部的统计，选择具体俱乐部时按俱乐部过滤
+      if (user?.role === 'part_time_coach' && user?.id) {
         url += `&coachId=${user.id}`
         if (clubId && clubId !== 'all') {
           url += `&clubId=${clubId}`
         }
       } else {
-        // 管理员：按俱乐部过滤
+        // 管理员/全职教练：按俱乐部过滤
         if (!clubId || clubId === 'all') { setLoading(false); return }
         url += `&clubId=${clubId}`
       }

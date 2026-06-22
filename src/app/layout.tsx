@@ -16,7 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   const isLoginPage = pathname === '/login'
 
-  // 教练不允许访问的管理页面
+  // 兼职教练和全职教练不允许访问的管理页面
   const coachBlockedPaths = ['/admin/users', '/admin/clubs', '/admin/campuses', '/admin/coach-prices']
 
   // 系统管理员不允许访问的页面（业务操作和俱乐部级别管理）
@@ -39,8 +39,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       if (stored) {
         const user = JSON.parse(stored)
 
-        // 教练不允许访问管理页面，重定向到首页
-        if (user.role === 'coach' && coachBlockedPaths.some(p => pathname.startsWith(p))) {
+        // 兼职教练和全职教练不允许访问管理页面，重定向到首页
+        if ((user.role === 'part_time_coach' || user.role === 'full_time_coach') && coachBlockedPaths.some(p => pathname.startsWith(p))) {
           router.replace('/')
           return
         }

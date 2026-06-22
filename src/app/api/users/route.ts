@@ -23,7 +23,13 @@ export async function GET(request: NextRequest) {
     ]
   }
   if (role) {
-    where.role = role
+    // 支持逗号分隔的多个角色（如 part_time_coach,full_time_coach）
+    const roles = role.split(',')
+    if (roles.length > 1) {
+      where.role = { in: roles }
+    } else {
+      where.role = role
+    }
   }
 
   // 手机号检测模式：不按俱乐部过滤，搜索所有用户
@@ -84,8 +90,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '请选择所属俱乐部' }, { status: 400 })
     }
   } else if (createdByRole === 'club_admin') {
-    if (role !== 'coach') {
-      return NextResponse.json({ error: '俱乐部管理员只能添加教练用户' }, { status: 403 })
+    if (role !== 'full_time_coach' && role !== 'part_time_coach') {
+      return NextResponse.json({ error: '俱乐部管理员只能添加全职教练或兼职教练' }, { status: 403 })
     }
     if (!clubId) {
       return NextResponse.json({ error: '请选择所属俱乐部' }, { status: 400 })
@@ -122,6 +128,23 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // 全职教练只能关联一个俱乐部
+    if (role === 'full_time_coach') {
+      const membershipCount = await prisma.clubMember.count({
+        where: { userId: existing.id },
+      })
+      if (membershipCount > 1) {
+        // 删除刚创建的关联
+        await prisma.clubMember.deleteMany({
+          where: {
+            userId: existing.id,
+            clubId: targetClubId,
+          },
+        })
+        return NextResponse.json({ error: '全职教练只能关联一个俱乐部' }, { status: 400 })
+      }
+    }
+
     return NextResponse.json({
       id: existing.id,
       name: existing.name,
@@ -150,12 +173,54 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  // 全职教练只能关联一个俱乐部
+  if (role === 'full_time_coach' && clubId) {
+    const membershipCount = await prisma.clubMember.count({
+      where: { userId: user.id },
+    })
+    if (membershipCount > 1) {
+      // 删除刚创建的关联
+      await prisma.clubMember.deleteMany({
+        where: {
+          userId: user.id,
+          clubId: parseInt(String(clubId)),
+        },
+      })
+      // 删除用户
+      await prisma.user.delete({
+        where: { id: user.id },
+      })
+      return NextResponse.json({ error: '全职教练只能关联一个俱乐部' }, { status: 400 })
+    }
+  }
+
   // 如果是俱乐部管理员，同时设置为俱乐部的 adminId
   if (role === 'club_admin' && clubId) {
     await prisma.club.update({
       where: { id: parseInt(String(clubId)) },
       data: { adminId: user.id },
     })
+  }
+
+  // 全职教练只能关联一个俱乐部
+  if (role === 'full_time_coach' && clubId) {
+    const membershipCount = await prisma.clubMember.count({
+      where: { userId: user.id },
+    })
+    if (membershipCount > 1) {
+      // 删除刚创建的关联
+      await prisma.clubMember.deleteMany({
+        where: {
+          userId: user.id,
+          clubId: parseInt(String(clubId)),
+        },
+      })
+      // 删除用户
+      await prisma.user.delete({
+        where: { id: user.id },
+      })
+      return NextResponse.json({ error: '全职教练只能关联一个俱乐部' }, { status: 400 })
+    }
   }
 
   return NextResponse.json({

@@ -122,7 +122,7 @@ export default function SchedulePage() {
       if (!clubId || clubId === 'all') return
     }
     try {
-      const studentUrl = user?.role === 'coach' && user?.id
+      const studentUrl = user?.role === 'part_time_coach' && user?.id
         ? `/api/students?clubId=${clubId}&coachId=${user.id}`
         : `/api/students?clubId=${clubId}`
       // 选择具体俱乐部时，只加载该俱乐部的科目（不传 coachId，避免返回私人科目）
@@ -130,11 +130,11 @@ export default function SchedulePage() {
       // 俱乐部管理员也能当教练，需要同时查询管理员列表
       const coachPromises = [
         fetch(subjectUrl),
-        fetch(`/api/users?role=coach&clubId=${clubId}`),
+        fetch(`/api/users?role=part_time_coach,full_time_coach&clubId=${clubId}`),
         fetch(`/api/campuses?clubId=${clubId}`),
         fetch(studentUrl),
       ]
-      if (user?.role === 'club_admin') {
+      if (user?.role === 'club_admin' || user?.role === 'full_time_coach') {
         coachPromises.push(fetch(`/api/users?role=club_admin&clubId=${clubId}`))
       }
       const [subRes, coachRes, campusRes, studentRes, adminRes] = await Promise.all(coachPromises)
@@ -147,8 +147,8 @@ export default function SchedulePage() {
       ])
       const adminData = adminRes ? await safeJson(adminRes) : []
       setSubjects(subData)
-      // 教练只能选自己；俱乐部管理员可以选所有教练+管理员
-      if (user?.role === 'coach' && user?.id) {
+      // 兼职教练只能选自己；俱乐部管理员/全职教练可以选所有教练+管理员
+      if (user?.role === 'part_time_coach' && user?.id) {
         setCoaches(coachData.filter((c: Coach) => c.id === user.id))
       } else {
         // 合并教练和管理员列表（去重）
@@ -178,18 +178,18 @@ export default function SchedulePage() {
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
     try {
-      const studentUrl = user?.role === 'coach' && user?.id
+      const studentUrl = user?.role === 'part_time_coach' && user?.id
         ? `/api/students?clubId=${targetClubId}&coachId=${user.id}`
         : `/api/students?clubId=${targetClubId}`
       // 选择具体俱乐部时，只加载该俱乐部的科目（不传 coachId，避免返回私人科目）
       const subjectUrl = `/api/subjects?clubId=${targetClubId}`
       const coachPromises = [
         fetch(subjectUrl),
-        fetch(`/api/users?role=coach&clubId=${targetClubId}`),
+        fetch(`/api/users?role=part_time_coach,full_time_coach&clubId=${targetClubId}`),
         fetch(`/api/campuses?clubId=${targetClubId}`),
         fetch(studentUrl),
       ]
-      if (user?.role === 'club_admin') {
+      if (user?.role === 'club_admin' || user?.role === 'full_time_coach') {
         coachPromises.push(fetch(`/api/users?role=club_admin&clubId=${targetClubId}`))
       }
       const [subRes, coachRes, campusRes, studentRes, adminRes] = await Promise.all(coachPromises)
@@ -202,7 +202,7 @@ export default function SchedulePage() {
       ])
       const adminData = adminRes ? await safeJson(adminRes) : []
       setSubjects(subData)
-      if (user?.role === 'coach' && user?.id) {
+      if (user?.role === 'part_time_coach' && user?.id) {
         setCoaches(coachData.filter((c: Coach) => c.id === user.id))
       } else {
         const coachMap = new Map<number, Coach>()
@@ -231,11 +231,14 @@ export default function SchedulePage() {
       const endDate = getLocalDateStr(dates[6])
 
       let url: string
-      if (user?.role === 'coach' && user?.id) {
-        // 教练：不按俱乐部过滤，只看自己的课程（跨所有俱乐部）
+      if (user?.role === 'part_time_coach' && user?.id) {
+        // 兼职教练：只看自己的课程，选择具体俱乐部时按俱乐部过滤
         url = `/api/courses?startDate=${startDate}&endDate=${endDate}&coachId=${user.id}`
+        if (clubId && clubId !== 'all') {
+          url += `&clubId=${clubId}`
+        }
       } else {
-        // 管理员：按俱乐部过滤
+        // 管理员/全职教练：按俱乐部过滤
         if (!clubId) { setLoading(false); return }
         url = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
         if (coachFilter !== 'all') {
@@ -270,12 +273,12 @@ export default function SchedulePage() {
     loadOptions()
   }, [loadOptions])
 
-  // 教练角色自动选中自己
+  // 兼职教练角色自动选中自己
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
     if (stored) {
       const user = JSON.parse(stored)
-      if (user.role === 'coach' && user.id) {
+      if (user.role === 'part_time_coach' && user.id) {
         setForm((prev) => ({ ...prev, coachId: String(user.id) }))
       }
     }
@@ -490,8 +493,8 @@ export default function SchedulePage() {
         <h1 className="text-2xl font-bold">排课管理</h1>
         <div className="flex items-center gap-3">
           <ClubSelector />
-          {/* 教练筛选（仅管理员可见） */}
-          {role !== 'coach' && (
+          {/* 教练筛选（仅管理员和全职教练可见） */}
+          {role !== 'part_time_coach' && (
             <Select value={coachFilter} onValueChange={setCoachFilter}>
               <SelectTrigger className="w-[130px]">
                 <SelectValue placeholder="筛选教练" />
