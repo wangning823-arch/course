@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { authFetch } from '@/lib/fetch-client'
 
 interface Club { id: number; name: string }
 
@@ -19,22 +20,48 @@ export function ClubSelector() {
   }, [])
 
   React.useEffect(() => {
-    // 非超管不加载俱乐部列表
-    if (role && role !== 'super_admin') return
+    if (!role) return
 
-    fetch('/api/clubs')
-      .then((res) => res.json())
-      .then((data) => {
-        setClubs(data)
-        const saved = localStorage.getItem('currentClubId')
-        if (saved && data.some((c: Club) => c.id === parseInt(saved))) {
-          setCurrentClubId(saved)
-        } else if (data.length > 0) {
-          setCurrentClubId(String(data[0].id))
-          localStorage.setItem('currentClubId', String(data[0].id))
-        }
-      })
-      .catch(() => {})
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+
+    if (role === 'super_admin') {
+      // 超管：获取所有俱乐部
+      fetch('/api/clubs')
+        .then((res) => res.json())
+        .then((data) => {
+          setClubs(data)
+          const saved = localStorage.getItem('currentClubId')
+          if (saved && data.some((c: Club) => c.id === parseInt(saved))) {
+            setCurrentClubId(saved)
+          } else if (data.length > 0) {
+            setCurrentClubId(String(data[0].id))
+            localStorage.setItem('currentClubId', String(data[0].id))
+          }
+        })
+        .catch(() => {})
+    } else {
+      // 教练/管理员：获取自己所属的俱乐部
+      authFetch('/api/auth/me/clubs')
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data) && data.length > 0) {
+            setClubs(data)
+            const saved = localStorage.getItem('currentClubId')
+            if (saved && (saved === 'all' || data.some((c: Club) => c.id === parseInt(saved)))) {
+              setCurrentClubId(saved)
+            } else if (data.length > 1) {
+              // 多俱乐部用户默认选"全部"
+              setCurrentClubId('all')
+              localStorage.setItem('currentClubId', 'all')
+            } else {
+              setCurrentClubId(String(data[0].id))
+              localStorage.setItem('currentClubId', String(data[0].id))
+            }
+          }
+        })
+        .catch(() => {})
+    }
   }, [role])
 
   const handleChange = (value: string) => {
@@ -43,9 +70,8 @@ export function ClubSelector() {
     window.dispatchEvent(new CustomEvent('clubChanged', { detail: { clubId: value } }))
   }
 
-  // 非超管不显示选择器
-  if (role && role !== 'super_admin') return null
-  if (clubs.length === 0) return null
+  // 多俱乐部时才显示选择器
+  if (clubs.length <= 1) return null
 
   return (
     <Select value={currentClubId} onValueChange={handleChange}>
@@ -53,6 +79,7 @@ export function ClubSelector() {
         <SelectValue placeholder="选择俱乐部" />
       </SelectTrigger>
       <SelectContent>
+        <SelectItem value="all">全部俱乐部</SelectItem>
         {clubs.map((c) => (
           <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
         ))}

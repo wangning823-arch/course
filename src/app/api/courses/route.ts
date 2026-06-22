@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
   const where: any = {}
   where.status = { not: 'cancelled' }
-  if (clubId) where.clubId = parseInt(clubId)
+  if (clubId && clubId !== 'all') where.clubId = parseInt(clubId)
   if (startDate && endDate) {
     // 日期字符串转为UTC时间范围（与存储格式一致）
     const [sy, sm, sd] = startDate.split('-').map(Number)

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { ClubSelector } from '@/components/club-selector'
+import { authFetch } from '@/lib/fetch-client'
 
 // 本地日期格式化（避免时区偏移）
 function getLocalDateStr(d: Date) {
@@ -79,9 +80,11 @@ export default function SchedulePage() {
   const [coaches, setCoaches] = React.useState<Coach[]>([])
   const [campuses, setCampuses] = React.useState<Campus[]>([])
   const [students, setStudents] = React.useState<Student[]>([])
+  const [coachClubs, setCoachClubs] = React.useState<{id: number, name: string}[]>([])
 
   // 表单状态
   const [form, setForm] = React.useState({
+    clubId: '',
     subjectId: '',
     coachId: '',
     campusId: '',
@@ -103,10 +106,21 @@ export default function SchedulePage() {
 
   // 加载下拉选项
   const loadOptions = React.useCallback(async () => {
-    const clubId = localStorage.getItem('currentClubId')
-    if (!clubId) return
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
+    let clubId = localStorage.getItem('currentClubId')
+    // 当未选择俱乐部时，从用户所属俱乐部中取第一个来加载选项
+    if (!clubId || clubId === 'all') {
+      try {
+        const clubsRes = await authFetch('/api/auth/me/clubs')
+        if (clubsRes.ok) {
+          const clubs = await clubsRes.json()
+          setCoachClubs(clubs)
+          if (clubs.length > 0) clubId = String(clubs[0].id)
+        }
+      } catch {}
+      if (!clubId || clubId === 'all') return
+    }
     try {
       const studentUrl = user?.role === 'coach' && user?.id
         ? `/api/students?clubId=${clubId}&coachId=${user.id}`
@@ -122,10 +136,14 @@ export default function SchedulePage() {
         coachPromises.push(fetch(`/api/users?role=club_admin&clubId=${clubId}`))
       }
       const [subRes, coachRes, campusRes, studentRes, adminRes] = await Promise.all(coachPromises)
+      const safeJson = async (res: Response) => {
+        if (!res.ok) return []
+        try { return await res.json() } catch { return [] }
+      }
       const [subData, coachData, campusData, studentData] = await Promise.all([
-        subRes.json(), coachRes.json(), campusRes.json(), studentRes.json(),
+        safeJson(subRes), safeJson(coachRes), safeJson(campusRes), safeJson(studentRes),
       ])
-      const adminData = adminRes ? await adminRes.json() : []
+      const adminData = adminRes ? await safeJson(adminRes) : []
       setSubjects(subData)
       // 教练只能选自己；俱乐部管理员可以选所有教练+管理员
       if (user?.role === 'coach' && user?.id) {
@@ -139,33 +157,86 @@ export default function SchedulePage() {
       }
       setCampuses(campusData)
       setStudents(studentData)
+
+      // 加载用户的俱乐部列表（用于课程表单中的俱乐部选择）
+      try {
+        const clubsRes = await authFetch('/api/auth/me/clubs')
+        if (clubsRes.ok) {
+          const clubsData = await clubsRes.json()
+          setCoachClubs(clubsData)
+        }
+      } catch {}
     } catch (e) {
       console.error('加载选项失败:', e)
     }
   }, [])
 
+  // 加载指定俱乐部的下拉选项（切换俱乐部时使用）
+  const loadOptionsForClub = React.useCallback(async (targetClubId: string) => {
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+    try {
+      const studentUrl = user?.role === 'coach' && user?.id
+        ? `/api/students?clubId=${targetClubId}&coachId=${user.id}`
+        : `/api/students?clubId=${targetClubId}`
+      const coachPromises = [
+        fetch(`/api/subjects?clubId=${targetClubId}`),
+        fetch(`/api/users?role=coach&clubId=${targetClubId}`),
+        fetch(`/api/campuses?clubId=${targetClubId}`),
+        fetch(studentUrl),
+      ]
+      if (user?.role === 'club_admin') {
+        coachPromises.push(fetch(`/api/users?role=club_admin&clubId=${targetClubId}`))
+      }
+      const [subRes, coachRes, campusRes, studentRes, adminRes] = await Promise.all(coachPromises)
+      const safeJson = async (res: Response) => {
+        if (!res.ok) return []
+        try { return await res.json() } catch { return [] }
+      }
+      const [subData, coachData, campusData, studentData] = await Promise.all([
+        safeJson(subRes), safeJson(coachRes), safeJson(campusRes), safeJson(studentRes),
+      ])
+      const adminData = adminRes ? await safeJson(adminRes) : []
+      setSubjects(subData)
+      if (user?.role === 'coach' && user?.id) {
+        setCoaches(coachData.filter((c: Coach) => c.id === user.id))
+      } else {
+        const coachMap = new Map<number, Coach>()
+        for (const c of coachData) coachMap.set(c.id, c)
+        for (const a of adminData) coachMap.set(a.id, { id: a.id, name: a.name })
+        setCoaches(Array.from(coachMap.values()))
+      }
+      setCampuses(campusData)
+      setStudents(studentData)
+    } catch (e) {
+      console.error('加载俱乐部选项失败:', e)
+    }
+  }, [])
+
   // 加载课程数据
   const loadCourses = React.useCallback(async () => {
-    const clubId = localStorage.getItem('currentClubId')
-    if (!clubId) return
-
     // 获取当前用户信息
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
+    const clubId = localStorage.getItem('currentClubId')
 
     setLoading(true)
     try {
       const dates = getWeekDates(weekOffset)
       const startDate = getLocalDateStr(dates[0])
       const endDate = getLocalDateStr(dates[6])
-      let url = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
 
-      // 教练只能看自己的课程
+      let url: string
       if (user?.role === 'coach' && user?.id) {
-        url += `&coachId=${user.id}`
-      } else if (coachFilter !== 'all') {
-        // 管理员可以选择查看某个教练的课程
-        url += `&coachId=${coachFilter}`
+        // 教练：不按俱乐部过滤，只看自己的课程（跨所有俱乐部）
+        url = `/api/courses?startDate=${startDate}&endDate=${endDate}&coachId=${user.id}`
+      } else {
+        // 管理员：按俱乐部过滤
+        if (!clubId) { setLoading(false); return }
+        url = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
+        if (coachFilter !== 'all') {
+          url += `&coachId=${coachFilter}`
+        }
       }
 
       const res = await fetch(url)
@@ -218,13 +289,10 @@ export default function SchedulePage() {
 
   // 创建课程
   const handleCreate = async () => {
-    if (!form.subjectId || !form.coachId || !form.scheduledDate) {
+    // 当只有一个俱乐部时，自动使用该俱乐部
+    const effectiveClubId = form.clubId || (coachClubs.length === 1 ? String(coachClubs[0].id) : '')
+    if (!effectiveClubId || !form.subjectId || !form.coachId || !form.scheduledDate) {
       alert('请填写必要信息')
-      return
-    }
-    const clubId = localStorage.getItem('currentClubId')
-    if (!clubId) {
-      alert('请先选择俱乐部')
       return
     }
 
@@ -233,7 +301,7 @@ export default function SchedulePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clubId,
+          clubId: effectiveClubId,
           campusId: form.campusId || null,
           subjectId: form.subjectId,
           coachId: form.coachId,
@@ -304,7 +372,9 @@ export default function SchedulePage() {
   }
 
   const resetForm = () => {
+    const currentClubId = localStorage.getItem('currentClubId')
     setForm({
+      clubId: currentClubId && currentClubId !== 'all' ? currentClubId : '',
       subjectId: '', coachId: '', campusId: '',
       scheduledDate: '', startTime: '09:00', endTime: '10:00',
       location: '', remark: '', studentIds: [],
@@ -443,6 +513,22 @@ export default function SchedulePage() {
               <DialogDescription>填写课程信息</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              {coachClubs.length > 1 && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">俱乐部 *</label>
+                  <Select value={form.clubId} onValueChange={(v) => {
+                    setForm({ ...form, clubId: v })
+                    loadOptionsForClub(v)
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="选择俱乐部" /></SelectTrigger>
+                    <SelectContent>
+                      {coachClubs.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">科目 *</label>

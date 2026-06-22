@@ -87,12 +87,16 @@ export default function HomePage() {
     const startDate = `${year}-${month}-${day}`
     const endDate = startDate
 
-    let courseUrl = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
-    let statsUrl = `/api/statistics?clubId=${clubId}&period=month`
+    let courseUrl: string
+    let statsUrl: string
 
     if (user?.role === 'coach' && user?.id) {
-      courseUrl += `&coachId=${user.id}`
-      statsUrl += `&coachId=${user.id}`
+      // 教练：不按俱乐部过滤，看所有俱乐部的课程和统计
+      courseUrl = `/api/courses?startDate=${startDate}&endDate=${endDate}&coachId=${user.id}`
+      statsUrl = `/api/statistics?coachId=${user.id}&period=month`
+    } else {
+      courseUrl = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
+      statsUrl = `/api/statistics?clubId=${clubId}&period=month`
     }
 
     fetch(courseUrl)

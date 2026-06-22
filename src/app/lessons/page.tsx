@@ -93,12 +93,16 @@ export default function LessonsPage() {
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
     try {
-      const studentUrl = user?.role === 'coach' && user?.id
-        ? `/api/students?clubId=${clubId}&coachId=${user.id}`
-        : `/api/students?clubId=${clubId}`
+      const isCoach = user?.role === 'coach' && user?.id
       const fetchPromises = [
-        fetch(`/api/courses?clubId=${clubId}${user?.role === 'coach' && user?.id ? `&coachId=${user.id}` : ''}`),
-        fetch(studentUrl),
+        // 教练：不按俱乐部过滤课程，只看自己的；管理员：按俱乐部过滤
+        fetch(isCoach
+          ? `/api/courses?coachId=${user.id}`
+          : `/api/courses?clubId=${clubId}`),
+        // 教练：不按俱乐部过滤学员；管理员：按俱乐部过滤
+        fetch(isCoach
+          ? `/api/students?clubId=all&coachId=${user.id}`
+          : `/api/students?clubId=${clubId}`),
         fetch(`/api/users?role=coach&clubId=${clubId}`),
         fetch(`/api/subjects?clubId=${clubId}`),
       ]
@@ -106,10 +110,14 @@ export default function LessonsPage() {
         fetchPromises.push(fetch(`/api/users?role=club_admin&clubId=${clubId}`))
       }
       const [courseRes, studentRes, coachRes, subjectRes, adminRes] = await Promise.all(fetchPromises)
+      const safeJson = async (res: Response) => {
+        if (!res.ok) return []
+        try { return await res.json() } catch { return [] }
+      }
       const [courseData, studentData, coachData, subjectData] = await Promise.all([
-        courseRes.json(), studentRes.json(), coachRes.json(), subjectRes.json(),
+        safeJson(courseRes), safeJson(studentRes), safeJson(coachRes), safeJson(subjectRes),
       ])
-      const adminData = adminRes ? await adminRes.json() : []
+      const adminData = adminRes ? await safeJson(adminRes) : []
 
       // 过滤掉过去的课程，并合并相同课程
       const today = new Date()
@@ -145,20 +153,20 @@ export default function LessonsPage() {
 
   // 加载课时记录
   const loadLessons = React.useCallback(async () => {
-    const clubId = localStorage.getItem('currentClubId')
-    if (!clubId) return
-
     // 获取当前用户信息
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
+    const clubId = localStorage.getItem('currentClubId')
 
     setLoading(true)
     try {
-      let params = `clubId=${clubId}`
-
-      // 教练只能看自己的课时
+      let params: string
       if (user?.role === 'coach' && user?.id) {
-        params += `&coachId=${user.id}`
+        // 教练：不按俱乐部过滤，看所有俱乐部的课时
+        params = `coachId=${user.id}`
+      } else {
+        if (!clubId) { setLoading(false); return }
+        params = `clubId=${clubId}`
       }
 
       if (search) params += `&search=${encodeURIComponent(search)}`

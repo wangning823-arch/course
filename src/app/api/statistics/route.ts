@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const baseWhere: any = {
     status: 'confirmed',
   }
-  if (clubId) {
+  if (clubId && clubId !== 'all') {
     baseWhere.course = { clubId: parseInt(clubId) }
   }
   // 按教练过滤

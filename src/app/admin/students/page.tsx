@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, Edit, Trash2, Search, RefreshCw, UserCheck, UserX, Users, Lock } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, RefreshCw, UserCheck, UserX, Users, Lock, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -13,6 +13,7 @@ import { ClubSelector } from '@/components/club-selector'
 import { authFetch } from '@/lib/fetch-client'
 
 interface Coach { id: number; name: string }
+interface Club { id: number; name: string }
 
 export default function StudentsPage() {
   const [students, setStudents] = React.useState<any[]>([])
@@ -24,7 +25,9 @@ export default function StudentsPage() {
   const [role, setRole] = React.useState<string>('')
   const [userId, setUserId] = React.useState<number | null>(null)
   const [coaches, setCoaches] = React.useState<Coach[]>([])
-  const [studentType, setStudentType] = React.useState<'shared' | 'private'>('private')
+  const [coachClubs, setCoachClubs] = React.useState<Club[]>([])
+  const [selectedClubId, setSelectedClubId] = React.useState<string>('')
+  const [studentType, setStudentType] = React.useState<'shared' | 'private' | 'solo'>('private')
 
   React.useEffect(() => {
     const stored = localStorage.getItem('user')
@@ -38,22 +41,34 @@ export default function StudentsPage() {
   const fetchStudents = React.useCallback(async () => {
     setLoading(true)
     try {
-      const clubId = localStorage.getItem('currentClubId')
       const stored = localStorage.getItem('user')
       const user = stored ? JSON.parse(stored) : null
+      const clubId = localStorage.getItem('currentClubId') || user?.clubId
 
       let url = `/api/students?search=${search}`
-      if (clubId) url += `&clubId=${clubId}`
-      // 教练传自己的ID，API会返回共享+私有学员
+      // 教练：默认看所有俱乐部学员，选择具体俱乐部时按俱乐部过滤
       if (user?.role === 'coach' && user?.id) {
         url += `&coachId=${user.id}`
+        if (clubId && clubId !== 'all') {
+          url += `&clubId=${clubId}`
+        }
+      } else {
+        // 管理员：按俱乐部过滤
+        if (clubId && clubId !== 'all') {
+          url += `&clubId=${clubId}`
+        }
       }
 
       const res = await authFetch(url)
+      if (!res.ok) {
+        setStudents([])
+        return
+      }
       const data = await res.json()
       setStudents(data)
     } catch (error) {
       console.error('获取学员失败:', error)
+      setStudents([])
     } finally {
       setLoading(false)
     }
@@ -62,14 +77,37 @@ export default function StudentsPage() {
   // 加载教练列表（管理员用）
   const fetchCoaches = React.useCallback(async () => {
     if (role !== 'admin' && role !== 'club_admin' && role !== 'super_admin') return
-    const clubId = localStorage.getItem('currentClubId')
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+    const clubId = localStorage.getItem('currentClubId') || user?.clubId
     if (!clubId) return
     try {
       const res = await authFetch(`/api/users?role=coach&clubId=${clubId}`)
+      if (!res.ok) return
       const data = await res.json()
       setCoaches(data)
     } catch (e) {
       console.error('加载教练失败:', e)
+    }
+  }, [role])
+
+  // 加载教练所属俱乐部列表
+  const fetchCoachClubs = React.useCallback(async () => {
+    if (role !== 'coach') return
+    try {
+      const res = await authFetch('/api/auth/me/clubs')
+      if (!res.ok) return
+      const data = await res.json()
+      setCoachClubs(data)
+      // 默认选中 currentClubId 或第一个俱乐部
+      const clubId = localStorage.getItem('currentClubId')
+      if (clubId && data.some((c: Club) => c.id === parseInt(clubId))) {
+        setSelectedClubId(clubId)
+      } else if (data.length > 0) {
+        setSelectedClubId(String(data[0].id))
+      }
+    } catch (e) {
+      console.error('加载俱乐部失败:', e)
     }
   }, [role])
 
@@ -79,7 +117,8 @@ export default function StudentsPage() {
 
   React.useEffect(() => {
     fetchCoaches()
-  }, [fetchCoaches])
+    fetchCoachClubs()
+  }, [fetchCoaches, fetchCoachClubs])
 
   // 监听俱乐部切换
   React.useEffect(() => {
@@ -93,12 +132,21 @@ export default function StudentsPage() {
 
   const handleSubmit = async () => {
     try {
-      const clubId = localStorage.getItem('currentClubId')
-      const submitData: any = { ...formData, gender: parseInt(formData.gender), clubId }
+      const submitData: any = { ...formData, gender: parseInt(formData.gender) }
 
-      // 教练创建学员：根据选择设置归属
       if (role === 'coach' && userId) {
-        submitData.coachId = studentType === 'private' ? userId : null
+        if (studentType === 'solo') {
+          // 纯私有学员：不关联俱乐部
+          submitData.clubId = null
+          submitData.coachId = userId
+        } else {
+          // 俱乐部学员：使用选择的俱乐部
+          submitData.clubId = selectedClubId ? parseInt(selectedClubId) : null
+          submitData.coachId = studentType === 'private' ? userId : null
+        }
+      } else {
+        const clubId = localStorage.getItem('currentClubId')
+        submitData.clubId = clubId ? parseInt(clubId) : null
       }
 
       if (editId) {
@@ -141,7 +189,14 @@ export default function StudentsPage() {
       parentName: student.parentName || '',
       parentPhone: student.parentPhone || '',
     })
-    setStudentType(student.coachId ? 'private' : 'shared')
+    // 判断学员类型
+    if (!student.clubId) {
+      setStudentType('solo')
+    } else if (student.coachId) {
+      setStudentType('private')
+    } else {
+      setStudentType('shared')
+    }
     setEditId(student.id)
     setDialogOpen(true)
   }
@@ -199,7 +254,7 @@ export default function StudentsPage() {
                     className="flex-1"
                     onClick={() => setStudentType('private')}
                   >
-                    <Lock className="h-4 w-4 mr-1" />私有学员
+                    <Lock className="h-4 w-4 mr-1" />俱乐部私有
                   </Button>
                   <Button
                     variant={studentType === 'shared' ? 'default' : 'outline'}
@@ -209,6 +264,27 @@ export default function StudentsPage() {
                   >
                     <Users className="h-4 w-4 mr-1" />俱乐部共享
                   </Button>
+                  <Button
+                    variant={studentType === 'solo' ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setStudentType('solo')}
+                  >
+                    <User className="h-4 w-4 mr-1" />纯私有
+                  </Button>
+                </div>
+              )}
+              {role === 'coach' && !editId && studentType !== 'solo' && coachClubs.length > 1 && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">所属俱乐部</label>
+                  <Select value={selectedClubId} onValueChange={setSelectedClubId}>
+                    <SelectTrigger><SelectValue placeholder="选择俱乐部" /></SelectTrigger>
+                    <SelectContent>
+                      {coachClubs.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
               <div className="space-y-4 py-4">
@@ -294,7 +370,12 @@ export default function StudentsPage() {
                       <TableCell className="hidden sm:table-cell">{student.parentPhone || '-'}</TableCell>
                       {isAdmin && (
                         <TableCell>
-                          {student.coach ? (
+                          {!student.clubId ? (
+                            <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">
+                              <User className="h-3 w-3 mr-1" />
+                              纯私有
+                            </Badge>
+                          ) : student.coach ? (
                             <div className="flex items-center gap-1">
                               <Badge variant="secondary" className="text-xs">
                                 <UserCheck className="h-3 w-3 mr-1" />

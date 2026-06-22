@@ -21,9 +21,8 @@ export default function StatisticsPage() {
   })
   const [loading, setLoading] = React.useState(true)
 
-  const fetchStats = async () => {
+  const fetchStats = React.useCallback(async () => {
     const clubId = localStorage.getItem('currentClubId')
-    if (!clubId) return
 
     // 获取当前用户信息
     const stored = localStorage.getItem('user')
@@ -31,11 +30,18 @@ export default function StatisticsPage() {
 
     setLoading(true)
     try {
-      let url = `/api/statistics?clubId=${clubId}&period=${period}`
+      let url = `/api/statistics?period=${period}`
 
-      // 教练只能看自己的统计
+      // 教练：默认看自己所有俱乐部的统计，选择具体俱乐部时按俱乐部过滤
       if (user?.role === 'coach' && user?.id) {
         url += `&coachId=${user.id}`
+        if (clubId && clubId !== 'all') {
+          url += `&clubId=${clubId}`
+        }
+      } else {
+        // 管理员：按俱乐部过滤
+        if (!clubId || clubId === 'all') { setLoading(false); return }
+        url += `&clubId=${clubId}`
       }
 
       const res = await fetch(url)
@@ -46,11 +52,11 @@ export default function StatisticsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [period])
 
   React.useEffect(() => {
     fetchStats()
-  }, [period])
+  }, [fetchStats])
 
   // 监听俱乐部切换
   React.useEffect(() => {

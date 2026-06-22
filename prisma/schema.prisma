@@ -141,7 +141,7 @@ model CoachPrice {
 // 课程表（排课）
 model Course {
   id             Int      @id @default(autoincrement())
-  clubId         Int
+  clubId         Int      // 所属俱乐部
   campusId       Int?     // 校区ID，支持多校区
   subjectId      Int
   coachId        Int      // 教练ID
@@ -186,7 +186,7 @@ model CourseStudent {
 // 学员表（仅录入，学员不使用系统）
 model Student {
   id        Int      @id @default(autoincrement())
-  clubId    Int      // 所属俱乐部
+  clubId    Int?     // 所属俱乐部，null=纯私有学员（仅教练可见，任何俱乐部不可见）
   coachId   Int?     // 私有教练ID，null=俱乐部共享，有值=仅该教练可见
   name      String   // 姓名
   phone     String?  // 联系电话
@@ -200,7 +200,7 @@ model Student {
   updatedAt DateTime @updatedAt
 
   // 关联
-  club            Club      @relation(fields: [clubId], references: [id])
+  club            Club?     @relation(fields: [clubId], references: [id])
   coach           User?     @relation("CoachStudents", fields: [coachId], references: [id])
   courses         CourseStudent[]
   lessons         Lesson[]

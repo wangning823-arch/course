@@ -9,36 +9,76 @@ export async function GET(request: NextRequest) {
   const clubId = searchParams.get('clubId')
   const coachId = searchParams.get('coachId')
 
-  if (!clubId) {
+  if (!clubId && !coachId) {
     return NextResponse.json({ error: '缺少clubId参数' }, { status: 400 })
   }
 
-  const where: any = { clubId: parseInt(clubId) }
-
-  if (search) {
-    where.OR = [
+  const searchFilter = search ? {
+    OR: [
       { name: { contains: search } },
       { phone: { contains: search } },
       { parentName: { contains: search } },
       { parentPhone: { contains: search } },
-    ]
-  }
+    ],
+  } : undefined
 
-  // 教练视角：只看共享学员(coachId=null) + 自己的私有学员
+  let students: any[] = []
+
   if (coachId) {
-    where.OR = [
-      { coachId: null },
-      { coachId: parseInt(coachId) },
-    ]
-  }
+    const cid = parseInt(coachId)
+    // 查出教练所属的俱乐部列表
+    const memberships = await prisma.clubMember.findMany({
+      where: { userId: cid },
+      select: { clubId: true },
+    })
+    const clubIds = memberships.map(m => m.clubId)
 
-  const students = await prisma.student.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    include: {
-      coach: { select: { id: true, name: true } },
-    },
-  })
+    // 所属俱乐部内的共享学员（coachId=null）
+    if (clubIds.length > 0) {
+      const where: any = { clubId: { in: clubIds }, coachId: null }
+      if (searchFilter) where.AND = [searchFilter]
+      const shared = await prisma.student.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: { coach: { select: { id: true, name: true } } },
+      })
+      students.push(...shared)
+    }
+
+    // 所属俱乐部内的该教练私有学员
+    if (clubIds.length > 0) {
+      const where: any = { clubId: { in: clubIds }, coachId: cid }
+      if (searchFilter) where.AND = [searchFilter]
+      const privateInClub = await prisma.student.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: { coach: { select: { id: true, name: true } } },
+      })
+      students.push(...privateInClub)
+    }
+
+    // 教练的纯私有学员（clubId=null）
+    const where: any = { clubId: null, coachId: cid }
+    if (searchFilter) where.AND = [searchFilter]
+    const purePrivate = await prisma.student.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: { coach: { select: { id: true, name: true } } },
+    })
+    students.push(...purePrivate)
+  } else {
+    // 管理员视角：按俱乐部过滤
+    const where: any = {}
+    if (clubId && clubId !== 'all') {
+      where.clubId = parseInt(clubId)
+    }
+    if (searchFilter) where.AND = [searchFilter]
+    students = await prisma.student.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: { coach: { select: { id: true, name: true } } },
+    })
+  }
 
   return NextResponse.json(students)
 }
@@ -51,27 +91,49 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '请输入学员姓名' }, { status: 400 })
   }
 
-  if (!clubId) {
-    return NextResponse.json({ error: '请选择俱乐部' }, { status: 400 })
-  }
-
-  // 俱乐部管理员/教练：强制使用自己的 clubId
   const authUser = await getAuthUser(request)
-  const finalClubId = (authUser?.role === 'club_admin' || authUser?.role === 'coach') && authUser.clubId
-    ? authUser.clubId
-    : parseInt(clubId)
 
-  if ((authUser?.role === 'club_admin' || authUser?.role === 'coach') && authUser.clubId !== finalClubId) {
-    return NextResponse.json({ error: '无权在其他俱乐部创建学员' }, { status: 403 })
+  let finalClubId: number | null = null
+  let finalCoachId: number | null = null
+
+  if (authUser?.role === 'coach') {
+    if (clubId === null || clubId === undefined || clubId === '') {
+      // 教练创建纯私有学员（无俱乐部关联）
+      finalClubId = null
+      finalCoachId = authUser.userId
+    } else {
+      // 教练创建俱乐部学员：验证教练是否属于该俱乐部
+      const membership = await prisma.clubMember.findFirst({
+        where: { userId: authUser.userId, clubId: parseInt(clubId) },
+      })
+      if (!membership) {
+        return NextResponse.json({ error: '无权在该俱乐部创建学员' }, { status: 403 })
+      }
+      finalClubId = parseInt(clubId)
+      finalCoachId = coachId ? parseInt(coachId) : null
+    }
+  } else if (authUser?.role === 'club_admin') {
+    // 管理员创建的学员必须属于自己的俱乐部
+    if (!clubId) {
+      return NextResponse.json({ error: '请选择俱乐部' }, { status: 400 })
+    }
+    finalClubId = authUser.clubId ? authUser.clubId : parseInt(clubId)
+    finalCoachId = coachId ? parseInt(coachId) : null
+  } else {
+    if (!clubId) {
+      return NextResponse.json({ error: '请选择俱乐部' }, { status: 400 })
+    }
+    finalClubId = parseInt(clubId)
+    finalCoachId = coachId ? parseInt(coachId) : null
   }
 
   const student = await prisma.student.create({
     data: {
       clubId: finalClubId,
-      coachId: coachId ? parseInt(coachId) : null,
+      coachId: finalCoachId,
       name,
       phone,
-      gender,
+      gender: gender ? parseInt(String(gender)) : null,
       parentName,
       parentPhone,
       remark,
