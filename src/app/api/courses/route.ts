@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     studentIds,
   } = await request.json()
 
-  if (!clubId || !subjectId || !coachId || !scheduledDate || !startTime || !endTime) {
+  if ((!clubId && clubId !== null) || !subjectId || !coachId || !scheduledDate || !startTime || !endTime) {
     return NextResponse.json({ error: '请填写完整信息' }, { status: 400 })
   }
 
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
 
   const course = await prisma.course.create({
     data: {
-      clubId: parseInt(clubId),
+      clubId: clubId ? parseInt(clubId) : null,
       campusId: campusId ? parseInt(campusId) : null,
       subjectId: parseInt(subjectId),
       coachId: parseInt(coachId),

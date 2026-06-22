@@ -26,46 +26,72 @@ export async function GET(request: NextRequest) {
 
   if (coachId) {
     const cid = parseInt(coachId)
-    // 查出教练所属的俱乐部列表
-    const memberships = await prisma.clubMember.findMany({
-      where: { userId: cid },
-      select: { clubId: true },
-    })
-    const clubIds = memberships.map(m => m.clubId)
 
-    // 所属俱乐部内的共享学员（coachId=null）
-    if (clubIds.length > 0) {
-      const where: any = { clubId: { in: clubIds }, coachId: null }
+    // 私人课程模式：只返回教练的纯私有学员（clubId=null）
+    if (clubId === 'private') {
+      const where: any = { clubId: null, coachId: cid }
       if (searchFilter) where.AND = [searchFilter]
-      const shared = await prisma.student.findMany({
+      students = await prisma.student.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         include: { coach: { select: { id: true, name: true } } },
       })
-      students.push(...shared)
-    }
+    } else {
+      const filterByClub = clubId && clubId !== 'all' ? parseInt(clubId) : null
 
-    // 所属俱乐部内的该教练私有学员
-    if (clubIds.length > 0) {
-      const where: any = { clubId: { in: clubIds }, coachId: cid }
-      if (searchFilter) where.AND = [searchFilter]
-      const privateInClub = await prisma.student.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        include: { coach: { select: { id: true, name: true } } },
+      // 查出教练所属的俱乐部列表
+      const memberships = await prisma.clubMember.findMany({
+        where: { userId: cid },
+        select: { clubId: true },
       })
-      students.push(...privateInClub)
-    }
+      const clubIds = filterByClub
+        ? (memberships.some(m => m.clubId === filterByClub) ? [filterByClub] : [])
+        : memberships.map(m => m.clubId)
 
-    // 教练的纯私有学员（clubId=null）
-    const where: any = { clubId: null, coachId: cid }
-    if (searchFilter) where.AND = [searchFilter]
-    const purePrivate = await prisma.student.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: { coach: { select: { id: true, name: true } } },
-    })
-    students.push(...purePrivate)
+      // 使用 Map 去重，以学员 ID 为键
+      const studentMap = new Map<number, any>()
+
+      // 所属俱乐部内的共享学员（coachId=null）
+      if (clubIds.length > 0) {
+        const where: any = { clubId: { in: clubIds }, coachId: null }
+        if (searchFilter) where.AND = [searchFilter]
+        const shared = await prisma.student.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          include: { coach: { select: { id: true, name: true } } },
+        })
+        shared.forEach(s => studentMap.set(s.id, s))
+      }
+
+      // 所属俱乐部内的该教练私有学员
+      if (clubIds.length > 0) {
+        const where: any = { clubId: { in: clubIds }, coachId: cid }
+        if (searchFilter) where.AND = [searchFilter]
+        const privateInClub = await prisma.student.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          include: { coach: { select: { id: true, name: true } } },
+        })
+        privateInClub.forEach(s => studentMap.set(s.id, s))
+      }
+
+      // 教练的纯私有学员（clubId=null）- 只有在查看全部时才显示
+      if (!filterByClub) {
+        const where: any = { clubId: null, coachId: cid }
+        if (searchFilter) where.AND = [searchFilter]
+        const purePrivate = await prisma.student.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          include: { coach: { select: { id: true, name: true } } },
+        })
+        purePrivate.forEach(s => studentMap.set(s.id, s))
+      }
+
+      // 转换为数组并按创建时间倒序排列
+      students = Array.from(studentMap.values()).sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+    }
   } else {
     // 管理员视角：按俱乐部过滤
     const where: any = {}

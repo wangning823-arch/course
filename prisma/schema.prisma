@@ -33,6 +33,7 @@ model User {
   memberships   ClubMember[]
   coachPrices   CoachPrice[]
   coachStudents Student[]    @relation("CoachStudents")
+  subjectCoaches Subject[]   @relation("SubjectCoach")
 }
 
 // 俱乐部表
@@ -97,7 +98,8 @@ model ClubMember {
 // 科目表
 model Subject {
   id              Int      @id @default(autoincrement())
-  clubId          Int      // 所属俱乐部
+  clubId          Int?     // 所属俱乐部（null=私人科目）
+  coachId         Int?     // 所属教练（私人科目时使用）
   name            String   // 科目名称
   category        String?  // 分类：篮球/足球/钢琴等
   teachingMode    String   // 授课方式：private/group
@@ -108,12 +110,14 @@ model Subject {
   createdAt       DateTime @default(now())
 
   // 关联
-  club            Club     @relation(fields: [clubId], references: [id])
+  club            Club?    @relation(fields: [clubId], references: [id])
+  coach           User?    @relation("SubjectCoach", fields: [coachId], references: [id])
   courses         Course[]
   settlementItems SettlementItem[]
   coachPrices     CoachPrice[]
 
   @@index([clubId])
+  @@index([coachId])
 }
 
 // 教练定价表（俱乐部+教练+科目+授课模式 = 价格）
@@ -141,7 +145,7 @@ model CoachPrice {
 // 课程表（排课）
 model Course {
   id             Int      @id @default(autoincrement())
-  clubId         Int      // 所属俱乐部
+  clubId         Int?     // 所属俱乐部（null=私人课程）
   campusId       Int?     // 校区ID，支持多校区
   subjectId      Int
   coachId        Int      // 教练ID
@@ -157,7 +161,7 @@ model Course {
   updatedAt      DateTime @updatedAt
 
   // 关联
-  club           Club     @relation(fields: [clubId], references: [id])
+  club           Club?    @relation(fields: [clubId], references: [id])
   campus         Campus?  @relation(fields: [campusId], references: [id])
   subject        Subject  @relation(fields: [subjectId], references: [id])
   coach          User     @relation("CourseCoach", fields: [coachId], references: [id])

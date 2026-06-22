@@ -56,6 +56,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     )
   )
 
+  // 更新课程状态为已完成
+  await prisma.course.update({
+    where: { id: courseId },
+    data: { status: 'completed' },
+  })
+
   return NextResponse.json({ success: true, count: lessons.length })
 }
 

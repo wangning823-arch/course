@@ -244,6 +244,8 @@ export async function GET(request: NextRequest) {
     const standardDuration = lesson.course.subject.durationMinutes || 60
 
     // 从 CoachPrice 表查找价格（俱乐部+教练+科目+授课模式）
+    // 私人课程（无俱乐部）不计入收入统计
+    if (!lesson.course.club) continue
     const coachPrice = await prisma.coachPrice.findUnique({
       where: {
         clubId_coachId_subjectId_teachingMode: {

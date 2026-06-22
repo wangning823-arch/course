@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClubSelector } from '@/components/club-selector'
+import { authFetch } from '@/lib/fetch-client'
 
 const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' }> = {
   pending: { label: '待确认', variant: 'warning' },
@@ -42,11 +43,13 @@ interface CourseOption {
   endTime: string
   students: string
   studentIds: number[]
+  status: string
 }
 
 interface Student { id: number; name: string }
 interface Coach { id: number; name: string }
-interface Subject { id: number; name: string }
+interface Subject { id: number; name: string; clubId: number | null; coachId?: number | null }
+interface Club { id: number; name: string }
 
 export default function LessonsPage() {
   const [lessons, setLessons] = React.useState<LessonData[]>([])
@@ -62,10 +65,12 @@ export default function LessonsPage() {
   const [students, setStudents] = React.useState<Student[]>([])
   const [coaches, setCoaches] = React.useState<Coach[]>([])
   const [subjects, setSubjects] = React.useState<Subject[]>([])
+  const [clubs, setClubs] = React.useState<Club[]>([])
 
   // 创建表单
   const [form, setForm] = React.useState({
     courseId: '',
+    clubId: '',
     subjectId: '',
     scheduledDate: '',
     studentId: '',
@@ -104,25 +109,30 @@ export default function LessonsPage() {
           ? `/api/students?clubId=all&coachId=${user.id}`
           : `/api/students?clubId=${clubId}`),
         fetch(`/api/users?role=coach&clubId=${clubId}`),
-        fetch(`/api/subjects?clubId=${clubId}`),
+        // 教练：加载所有所属俱乐部的科目+私人科目；管理员：按俱乐部过滤
+        fetch(isCoach
+          ? `/api/subjects?coachId=${user.id}`
+          : `/api/subjects?clubId=${clubId}`),
+        // 加载俱乐部列表（供表单选择）
+        isCoach ? authFetch('/api/auth/me/clubs') : fetch(`/api/clubs`),
       ]
       if (user?.role === 'club_admin') {
         fetchPromises.push(fetch(`/api/users?role=club_admin&clubId=${clubId}`))
       }
-      const [courseRes, studentRes, coachRes, subjectRes, adminRes] = await Promise.all(fetchPromises)
+      const [courseRes, studentRes, coachRes, subjectRes, clubRes, adminRes] = await Promise.all(fetchPromises)
       const safeJson = async (res: Response) => {
         if (!res.ok) return []
         try { return await res.json() } catch { return [] }
       }
-      const [courseData, studentData, coachData, subjectData] = await Promise.all([
-        safeJson(courseRes), safeJson(studentRes), safeJson(coachRes), safeJson(subjectRes),
+      const [courseData, studentData, coachData, subjectData, clubData] = await Promise.all([
+        safeJson(courseRes), safeJson(studentRes), safeJson(coachRes), safeJson(subjectRes), safeJson(clubRes),
       ])
       const adminData = adminRes ? await safeJson(adminRes) : []
 
       // 过滤掉过去的课程，并合并相同课程
       const today = new Date()
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-      const futureCourses = courseData.filter((c: CourseOption) => c.date >= todayStr)
+      const futureCourses = courseData.filter((c: CourseOption) => c.date >= todayStr && c.status !== 'completed')
 
       // 按科目+教练+日期+时间+学员去重
       const courseMap = new Map<string, CourseOption>()
@@ -136,9 +146,17 @@ export default function LessonsPage() {
       setCourses(Array.from(courseMap.values()))
       setStudents(studentData)
       setSubjects(subjectData)
+      setClubs(clubData)
       // 教练只能选自己；俱乐部管理员可以选所有教练+管理员
       if (user?.role === 'coach' && user?.id) {
-        setCoaches(coachData.filter((c: Coach) => c.id === user.id))
+        // 确保当前教练在列表中（即使不属于当前俱乐部）
+        const selfCoach = coachData.find((c: Coach) => c.id === user.id)
+        if (selfCoach) {
+          setCoaches([selfCoach])
+        } else {
+          // 教练不在当前俱乐部列表中，添加自己
+          setCoaches([{ id: user.id, name: user.name || '当前教练' }])
+        }
       } else {
         // 合并教练和管理员列表（去重）
         const coachMap = new Map<number, Coach>()
@@ -148,6 +166,62 @@ export default function LessonsPage() {
       }
     } catch (e) {
       console.error('加载选项失败:', e)
+    }
+  }, [])
+
+  // 根据俱乐部加载科目
+  const loadSubjectsByClub = React.useCallback(async (selectedClubId: string) => {
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+    try {
+      let url: string
+      if (selectedClubId === 'private') {
+        // 私人科目：只加载该教练的私人科目
+        url = `/api/subjects?coachId=${user?.id}&clubId=private`
+      } else if (selectedClubId) {
+        // 选择了具体俱乐部：加载该俱乐部的科目
+        url = `/api/subjects?clubId=${selectedClubId}`
+      } else if (user?.role === 'coach' && user?.id) {
+        // 教练未选俱乐部：加载所有所属俱乐部的科目+私人科目
+        url = `/api/subjects?coachId=${user.id}`
+      } else {
+        // 管理员未选俱乐部：不加载
+        setSubjects([])
+        return
+      }
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        setSubjects(data)
+      }
+    } catch (e) {
+      console.error('加载科目失败:', e)
+    }
+  }, [])
+
+  // 根据俱乐部加载学员
+  const loadStudentsByClub = React.useCallback(async (selectedClubId: string) => {
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
+    try {
+      let url: string
+      if (selectedClubId === 'private') {
+        // 私人课程：只显示教练的纯私有学员
+        url = `/api/students?coachId=${user?.id}&clubId=private`
+      } else if (user?.role === 'coach' && user?.id) {
+        // 教练：按俱乐部过滤学员
+        url = `/api/students?coachId=${user.id}&clubId=${selectedClubId || 'all'}`
+      } else {
+        // 管理员：按俱乐部过滤
+        url = `/api/students?clubId=${selectedClubId}`
+      }
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        setStudents(data)
+      }
+    } catch (e) {
+      console.error('加载学员失败:', e)
     }
   }, [])
 
@@ -200,15 +274,15 @@ export default function LessonsPage() {
 
   // 创建课时记录
   const handleCreate = async () => {
-    // 选择课程时，只需学员和教练；不选课程时，需要科目、日期、学员和教练
+    // 选择课程时，只需学员和教练；不选课程时，需要俱乐部、科目、日期、学员和教练
     if (form.courseId) {
       if (!form.studentId || !form.coachId) {
         alert('请选择学员和教练')
         return
       }
     } else {
-      if (!form.subjectId || !form.scheduledDate || !form.studentId || !form.coachId) {
-        alert('请选择科目、日期、学员和教练')
+      if (!form.clubId || !form.subjectId || !form.scheduledDate || !form.studentId || !form.coachId) {
+        alert('请选择俱乐部、科目、日期、学员和教练')
         return
       }
     }
@@ -218,6 +292,7 @@ export default function LessonsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           courseId: form.courseId || null,
+          clubId: form.clubId === 'private' ? null : (form.clubId || null),
           subjectId: form.subjectId || null,
           scheduledDate: form.scheduledDate || null,
           studentId: form.studentId,
@@ -303,7 +378,7 @@ export default function LessonsPage() {
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 
     setForm({
-      courseId: '', subjectId: '', scheduledDate: todayStr,
+      courseId: '', clubId: '', subjectId: '', scheduledDate: todayStr,
       studentId: '', coachId: defaultCoachId,
       actualStart: '', actualEnd: '', durationMinutes: '60',
       content: '', performance: '', homework: '',
@@ -358,19 +433,30 @@ export default function LessonsPage() {
                     // 取消选择课程，日期默认当天
                     const today = new Date()
                     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-                    setForm({ ...form, courseId: '', subjectId: '', scheduledDate: todayStr })
+                    setForm({ ...form, courseId: '', clubId: '', subjectId: '', scheduledDate: todayStr, studentId: '' })
+                    // 重新加载科目和学员（恢复为全部）
+                    const stored = localStorage.getItem('user')
+                    const user = stored ? JSON.parse(stored) : null
+                    if (user?.role === 'coach' && user?.id) {
+                      loadSubjectsByClub('')
+                      loadStudentsByClub('')
+                    }
                     return
                   }
                   // 选中课程时，自动填充所有字段
                   const course = courses.find(c => c.id === parseInt(v))
                   if (course) {
+                    // 查找课程所属俱乐部（通过科目关联）
+                    const courseSubject = subjects.find(s => s.id === course.subjectId)
                     setForm({
                       ...form,
                       courseId: v,
+                      clubId: courseSubject?.clubId ? String(courseSubject.clubId) : '',
                       subjectId: String(course.subjectId),
                       scheduledDate: course.date,
                       coachId: String(course.coachId),
-                      studentId: course.studentIds.length === 1 ? String(course.studentIds[0]) : form.studentId,
+                      // 一对一课程自动选中学员；多人课程清空让教练手动选择
+                      studentId: course.studentIds.length === 1 ? String(course.studentIds[0]) : '',
                       actualStart: course.startTime,
                       actualEnd: course.endTime,
                     })
@@ -386,38 +472,82 @@ export default function LessonsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              {!form.courseId && (
-                <div className="grid grid-cols-2 gap-4">
+              {form.courseId ? (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">俱乐部</label>
+                  <Input
+                    value={clubs.find(c => String(c.id) === form.clubId)?.name || '私人课程'}
+                    disabled
+                    className="bg-gray-50"
+                  />
+                </div>
+              ) : (
+                <>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">科目 *</label>
-                    <Select value={form.subjectId} onValueChange={(v) => setForm({ ...form, subjectId: v })}>
-                      <SelectTrigger><SelectValue placeholder="选择科目" /></SelectTrigger>
+                    <label className="text-sm font-medium">俱乐部 *</label>
+                    <Select value={form.clubId} onValueChange={(v) => {
+                      setForm({ ...form, clubId: v, subjectId: '', studentId: '' })
+                      loadSubjectsByClub(v)
+                      loadStudentsByClub(v)
+                    }}>
+                      <SelectTrigger><SelectValue placeholder="选择俱乐部" /></SelectTrigger>
                       <SelectContent>
-                        {subjects.map((s) => (
-                          <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                        {clubs.map((c) => (
+                          <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
                         ))}
+                        <SelectItem value="private">私人课程（不归属俱乐部）</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">日期 *</label>
-                    <Input
-                      type="date"
-                      value={form.scheduledDate}
-                      onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">科目 *</label>
+                      <Select value={form.subjectId} onValueChange={(v) => setForm({ ...form, subjectId: v })}>
+                        <SelectTrigger><SelectValue placeholder={form.clubId ? "选择科目" : "请先选择俱乐部"} /></SelectTrigger>
+                        <SelectContent>
+                          {subjects.map((s) => (
+                            <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">日期 *</label>
+                      <Input
+                        type="date"
+                        value={form.scheduledDate}
+                        onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
+                      />
+                    </div>
                   </div>
-                </div>
+                </>
               )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">学员 *</label>
                   <Select value={form.studentId} onValueChange={(v) => setForm({ ...form, studentId: v })}>
-                    <SelectTrigger><SelectValue placeholder="选择学员" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder={form.courseId ? "选择课程学员" : "选择学员"} /></SelectTrigger>
                     <SelectContent>
-                      {students.map((s) => (
-                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                      ))}
+                      {form.courseId ? (
+                        // 选择了课程：只显示该课程的学员
+                        (() => {
+                          const course = courses.find(c => c.id === parseInt(form.courseId))
+                          if (!course) return students.map((s) => (
+                            <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                          ))
+                          return course.studentIds.map((sid) => {
+                            const student = students.find(s => s.id === sid)
+                            return student ? (
+                              <SelectItem key={student.id} value={String(student.id)}>{student.name}</SelectItem>
+                            ) : null
+                          })
+                        })()
+                      ) : (
+                        // 未选课程：显示所有学员
+                        students.map((s) => (
+                          <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -439,6 +569,14 @@ export default function LessonsPage() {
                   <Input
                     type="time"
                     value={form.actualStart}
+                    onFocus={(e) => {
+                      // 浏览器自动填入当前时间，把分钟重置为00
+                      const val = e.target.value
+                      const now = new Date()
+                      const h = val ? val.split(':')[0] : String(now.getHours()).padStart(2, '0')
+                      e.target.value = `${h}:00`
+                      setForm({ ...form, actualStart: `${h}:00` })
+                    }}
                     onChange={(e) => {
                       const start = e.target.value
                       const end = form.actualEnd
@@ -451,6 +589,7 @@ export default function LessonsPage() {
                       }
                       setForm({ ...form, actualStart: start, durationMinutes: duration })
                     }}
+                    className="w-[120px]"
                   />
                 </div>
                 <div className="space-y-2">
@@ -458,6 +597,13 @@ export default function LessonsPage() {
                   <Input
                     type="time"
                     value={form.actualEnd}
+                    onFocus={(e) => {
+                      // 浏览器自动填入当前时间，把分钟重置为00
+                      const now = new Date()
+                      const h = String(now.getHours()).padStart(2, '0')
+                      e.target.value = `${h}:00`
+                      setForm({ ...form, actualEnd: `${h}:00` })
+                    }}
                     onChange={(e) => {
                       const end = e.target.value
                       const start = form.actualStart
@@ -470,6 +616,7 @@ export default function LessonsPage() {
                       }
                       setForm({ ...form, actualEnd: end, durationMinutes: duration })
                     }}
+                    className="w-[120px]"
                   />
                 </div>
                 <div className="space-y-2">
@@ -478,6 +625,7 @@ export default function LessonsPage() {
                     type="number"
                     value={form.durationMinutes}
                     onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
+                    className="w-full max-w-[100px]"
                   />
                 </div>
               </div>
