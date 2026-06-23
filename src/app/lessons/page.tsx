@@ -104,7 +104,7 @@ export default function LessonsPage() {
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
     try {
-      const isPartTimeCoach = user?.role === 'part_time_coach' && user?.id
+      const isPartTimeCoach = (user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id
       const clubFilter = isPartTimeCoach && clubId && clubId !== 'all' ? `&clubId=${clubId}` : ''
       const fetchPromises = [
         // 兼职教练：只看自己的课程，选择具体俱乐部时按俱乐部过滤；管理员/全职教练：按俱乐部过滤
@@ -115,7 +115,7 @@ export default function LessonsPage() {
         fetch(isPartTimeCoach
           ? `/api/students?coachId=${user.id}${clubFilter || '&clubId=all'}`
           : `/api/students?clubId=${clubId}`),
-        fetch(`/api/users?role=part_time_coach,full_time_coach&clubId=${clubId}`),
+        fetch(`/api/users?role=coach,part_time_coach,full_time_coach&clubId=${clubId}`),
         // 兼职教练：加载所属俱乐部的科目+私人科目，选择具体俱乐部时按俱乐部过滤；管理员/全职教练：按俱乐部过滤
         fetch(isPartTimeCoach
           ? `/api/subjects?coachId=${user.id}${clubFilter}`
@@ -188,8 +188,8 @@ export default function LessonsPage() {
       } else if (selectedClubId) {
         // 选择了具体俱乐部：加载该俱乐部的科目
         url = `/api/subjects?clubId=${selectedClubId}`
-      } else if (user?.role === 'part_time_coach' && user?.id) {
-        // 兼职教练未选俱乐部：加载所有所属俱乐部的科目+私人科目
+      } else if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
+        // 教练未选俱乐部：加载所有所属俱乐部的科目+私人科目
         url = `/api/subjects?coachId=${user.id}`
       } else {
         // 管理员/全职教练未选俱乐部：不加载
@@ -215,8 +215,8 @@ export default function LessonsPage() {
       if (selectedClubId === 'private') {
         // 私人课程：只显示教练的纯私有学员
         url = `/api/students?coachId=${user?.id}&clubId=private`
-      } else if (user?.role === 'part_time_coach' && user?.id) {
-        // 兼职教练：按俱乐部过滤学员
+      } else if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
+        // 教练：按俱乐部过滤学员
         url = `/api/students?coachId=${user.id}&clubId=${selectedClubId || 'all'}`
       } else {
         // 管理员/全职教练：按俱乐部过滤
@@ -245,8 +245,8 @@ export default function LessonsPage() {
       // 如果有 courseId 参数，直接按课程过滤
       if (courseIdFromUrl) {
         params = `courseId=${courseIdFromUrl}`
-      } else if (user?.role === 'part_time_coach' && user?.id) {
-        // 兼职教练：只看自己的课时，选择具体俱乐部时按俱乐部过滤
+      } else if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
+        // 教练：只看自己的课时，选择具体俱乐部时按俱乐部过滤
         params = `coachId=${user.id}`
         if (clubId && clubId !== 'all') {
           params += `&clubId=${clubId}`
@@ -391,7 +391,7 @@ export default function LessonsPage() {
     // 兼职教练角色保留自己的选中
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
-    const defaultCoachId = user?.role === 'part_time_coach' && user?.id ? String(user.id) : ''
+    const defaultCoachId = (user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id ? String(user.id) : ''
 
     const today = new Date()
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -422,10 +422,15 @@ export default function LessonsPage() {
       l.student?.includes(search)
   )
 
-  // 按日期逆序排列
+  // 先按状态排序（未确认在前），再按日期时间逆序
   const sortedLessons = [...filtered].sort((a, b) => {
-    if (a.date === b.date) return 0
-    return a.date > b.date ? -1 : 1
+    // 状态优先级：pending < confirmed < cancelled
+    const statusOrder: Record<string, number> = { pending: 0, confirmed: 1, cancelled: 2 }
+    const statusDiff = (statusOrder[a.status] ?? 1) - (statusOrder[b.status] ?? 1)
+    if (statusDiff !== 0) return statusDiff
+    // 同状态按日期逆序
+    if (a.date !== b.date) return a.date > b.date ? -1 : 1
+    return 0
   })
 
   // 分页
@@ -477,7 +482,7 @@ export default function LessonsPage() {
                     // 重新加载科目和学员（恢复为全部）
                     const stored = localStorage.getItem('user')
                     const user = stored ? JSON.parse(stored) : null
-                    if (user?.role === 'part_time_coach' && user?.id) {
+                    if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
                       loadSubjectsByClub('')
                       loadStudentsByClub('')
                     }
@@ -699,90 +704,136 @@ export default function LessonsPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-            <div className="flex items-center gap-2 flex-1">
-              <Search className="h-4 w-4 text-gray-400" />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="搜索科目、教练、学员..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="max-w-sm"
+                className="pl-9"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Select value={timeRange} onValueChange={(v) => setTimeRange(v)}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部时间</SelectItem>
-                  <SelectItem value="today">今天</SelectItem>
-                  <SelectItem value="week">本周</SelectItem>
-                  <SelectItem value="month">本月</SelectItem>
-                  <SelectItem value="quarter">本季度</SelectItem>
-                  <SelectItem value="year">本年</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={timeRange} onValueChange={(v) => setTimeRange(v)}>
+              <SelectTrigger className="w-[100px] flex-shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部时间</SelectItem>
+                <SelectItem value="today">今天</SelectItem>
+                <SelectItem value="week">本周</SelectItem>
+                <SelectItem value="month">本月</SelectItem>
+                <SelectItem value="quarter">本季度</SelectItem>
+                <SelectItem value="year">本年</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="text-sm text-gray-500 mt-2">
+            共 {sortedLessons.length} 条记录，总时长 {totalTimeDisplay}
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>日期</TableHead>
-                <TableHead>科目</TableHead>
-                <TableHead>教练</TableHead>
-                <TableHead className="hidden sm:table-cell">学员</TableHead>
-                <TableHead className="hidden md:table-cell">校区</TableHead>
-                <TableHead>时长（{totalTimeDisplay}）</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
+          {/* 桌面端表格 */}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">加载中...</TableCell>
+                  <TableHead>日期</TableHead>
+                  <TableHead>科目</TableHead>
+                  <TableHead>教练</TableHead>
+                  <TableHead>学员</TableHead>
+                  <TableHead>校区</TableHead>
+                  <TableHead>时长</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>操作</TableHead>
                 </TableRow>
-              ) : paginatedLessons.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">暂无课时记录</TableCell>
-                </TableRow>
-              ) : (
-                paginatedLessons.map((lesson) => (
-                  <TableRow key={lesson.id}>
-                    <TableCell>{lesson.date}</TableCell>
-                    <TableCell>{lesson.subject}</TableCell>
-                    <TableCell>{lesson.coach}</TableCell>
-                    <TableCell className="hidden sm:table-cell">{lesson.student}</TableCell>
-                    <TableCell className="hidden md:table-cell">{lesson.campus}</TableCell>
-                    <TableCell>{lesson.duration}分钟</TableCell>
-                    <TableCell>
-                      <Badge variant={statusMap[lesson.status]?.variant || 'default'}>
-                        {statusMap[lesson.status]?.label || lesson.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {lesson.status === 'pending' && (
-                          <Button variant="ghost" size="sm" onClick={() => handleConfirm(lesson)} title="确认">
-                            <Check className="h-4 w-4 text-green-600" />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(lesson)} title="编辑">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => { setSelectedLesson(lesson); setDeleteDialogOpen(true) }} title="删除">
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </TableCell>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">加载中...</TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : paginatedLessons.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">暂无课时记录</TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedLessons.map((lesson) => (
+                    <TableRow key={lesson.id}>
+                      <TableCell>{lesson.date}</TableCell>
+                      <TableCell>{lesson.subject}</TableCell>
+                      <TableCell>{lesson.coach}</TableCell>
+                      <TableCell>{lesson.student}</TableCell>
+                      <TableCell>{lesson.campus}</TableCell>
+                      <TableCell>{lesson.duration}分钟</TableCell>
+                      <TableCell>
+                        <Badge variant={statusMap[lesson.status]?.variant || 'default'}>
+                          {statusMap[lesson.status]?.label || lesson.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {lesson.status === 'pending' && (
+                            <Button variant="ghost" size="sm" onClick={() => handleConfirm(lesson)} title="确认">
+                              <Check className="h-4 w-4 text-green-600" />
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => openEditDialog(lesson)} title="编辑">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => { setSelectedLesson(lesson); setDeleteDialogOpen(true) }} title="删除">
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* 手机端卡片列表 */}
+          <div className="md:hidden space-y-3">
+            {loading ? (
+              <div className="text-center py-8 text-gray-500">加载中...</div>
+            ) : paginatedLessons.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">暂无课时记录</div>
+            ) : (
+              paginatedLessons.map((lesson) => (
+                <div key={lesson.id} className="border rounded-lg p-3 bg-white">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <div className="font-medium">{lesson.subject}</div>
+                      <div className="text-sm text-gray-500">{lesson.date}</div>
+                    </div>
+                    <Badge variant={statusMap[lesson.status]?.variant || 'default'}>
+                      {statusMap[lesson.status]?.label || lesson.status}
+                    </Badge>
+                  </div>
+                  <div className="text-sm space-y-1 mb-2">
+                    <div><span className="text-gray-500">教练：</span>{lesson.coach}</div>
+                    <div><span className="text-gray-500">学员：</span>{lesson.student}</div>
+                    {lesson.campus && <div><span className="text-gray-500">校区：</span>{lesson.campus}</div>}
+                    <div><span className="text-gray-500">时长：</span>{lesson.duration}分钟</div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2 border-t">
+                    {lesson.status === 'pending' && (
+                      <Button variant="ghost" size="sm" onClick={() => handleConfirm(lesson)}>
+                        <Check className="h-4 w-4 text-green-600 mr-1" />确认
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => openEditDialog(lesson)}>
+                      <Edit className="h-4 w-4 mr-1" />编辑
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setSelectedLesson(lesson); setDeleteDialogOpen(true) }}>
+                      <Trash2 className="h-4 w-4 mr-1 text-red-500" />删除
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
 
           {/* 分页控件 */}
           {totalPages > 1 && (

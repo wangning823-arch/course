@@ -64,7 +64,7 @@ export default function HomePage() {
   ]
 
   const getQuickActions = () => {
-    if (role === 'part_time_coach') return partTimeCoachQuickActions
+    if (role === 'coach' || role === 'part_time_coach') return partTimeCoachQuickActions
     if (role === 'super_admin') return superAdminQuickActions
     return adminQuickActions
   }
@@ -89,8 +89,8 @@ export default function HomePage() {
     let courseUrl: string
     let statsUrl: string
 
-    if (user?.role === 'part_time_coach' && user?.id) {
-      // 兼职教练：只看自己的课程和统计，选择具体俱乐部时按俱乐部过滤
+    if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
+      // 教练：只看自己的课程和统计，选择具体俱乐部时按俱乐部过滤
       courseUrl = `/api/courses?startDate=${startDate}&endDate=${endDate}&coachId=${user.id}`
       statsUrl = `/api/statistics?coachId=${user.id}&period=month`
       if (clubId && clubId !== 'all') {

@@ -35,7 +35,7 @@ export default function SubjectsPage() {
   }, [])
 
   const isClubAdmin = role === 'club_admin'
-  const isPartTimeCoach = role === 'part_time_coach'
+  const isPartTimeCoach = role === 'coach' || role === 'part_time_coach'
 
   const fetchSubjects = React.useCallback(async (currentRole?: string, currentUserId?: number | null) => {
     setLoading(true)
@@ -43,8 +43,8 @@ export default function SubjectsPage() {
       const roleToUse = currentRole || role
       const userIdToUse = currentUserId !== undefined ? currentUserId : userId
       let url: string
-      if (roleToUse === 'part_time_coach' && userIdToUse) {
-        // 兼职教练只看私人科目
+      if ((roleToUse === 'coach' || roleToUse === 'part_time_coach') && userIdToUse) {
+        // 教练只看私人科目
         url = `/api/subjects?clubId=private&coachId=${userIdToUse}`
       } else {
         const clubId = roleToUse === 'club_admin' ? userClubId : localStorage.getItem('currentClubId')

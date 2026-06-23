@@ -46,7 +46,31 @@
   * {
     @apply border-border;
   }
+  html {
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: auto;
+  }
   body {
     @apply bg-background text-foreground;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: auto;
+    -webkit-overflow-scrolling: auto;
   }
+}
+
+/* 日历区域禁止浏览器回退手势 */
+.calendar-container {
+  overscroll-behavior: none;
+  touch-action: pan-y pinch-zoom;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  will-change: transform;
+}
+
+/* 内部滚动容器也需要阻止手势 */
+.calendar-scroll-container {
+  overscroll-behavior-x: none;
+  touch-action: pan-y pinch-zoom;
+  will-change: transform, opacity;
 }

@@ -77,7 +77,7 @@ export default function CoachPricesPage() {
     if (!selectedClubId) return
     try {
       const [coachRes, subjectRes] = await Promise.all([
-        authFetch(`/api/users?role=part_time_coach,full_time_coach&clubId=${selectedClubId}`),
+        authFetch(`/api/users?role=coach,part_time_coach,full_time_coach&clubId=${selectedClubId}`),
         authFetch(`/api/subjects?clubId=${selectedClubId}`),
       ])
       const [coachData, subjectData] = await Promise.all([coachRes.json(), subjectRes.json()])

@@ -46,8 +46,8 @@ export default function StudentsPage() {
       const clubId = localStorage.getItem('currentClubId') || user?.clubId
 
       let url = `/api/students?search=${search}`
-      // 兼职教练：默认看所有俱乐部学员，选择具体俱乐部时按俱乐部过滤
-      if (user?.role === 'part_time_coach' && user?.id) {
+      // 教练：默认看所有俱乐部学员，选择具体俱乐部时按俱乐部过滤
+      if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
         url += `&coachId=${user.id}`
         if (clubId && clubId !== 'all') {
           url += `&clubId=${clubId}`
@@ -82,7 +82,7 @@ export default function StudentsPage() {
     const clubId = localStorage.getItem('currentClubId') || user?.clubId
     if (!clubId) return
     try {
-      const res = await authFetch(`/api/users?role=part_time_coach,full_time_coach&clubId=${clubId}`)
+      const res = await authFetch(`/api/users?role=coach,part_time_coach,full_time_coach&clubId=${clubId}`)
       if (!res.ok) return
       const data = await res.json()
       setCoaches(data)
@@ -93,7 +93,7 @@ export default function StudentsPage() {
 
   // 加载教练所属俱乐部列表
   const fetchCoachClubs = React.useCallback(async () => {
-    if (role !== 'part_time_coach') return
+    if (role !== 'coach' && role !== 'part_time_coach') return
     try {
       const res = await authFetch('/api/auth/me/clubs')
       if (!res.ok) return
@@ -134,7 +134,7 @@ export default function StudentsPage() {
     try {
       const submitData: any = { ...formData, gender: parseInt(formData.gender) }
 
-      if (role === 'part_time_coach' && userId) {
+      if ((role === 'coach' || role === 'part_time_coach') && userId) {
         if (studentType === 'solo') {
           // 纯私有学员：不关联俱乐部
           submitData.clubId = null
@@ -217,14 +217,14 @@ export default function StudentsPage() {
 
   const isAdmin = role === 'admin' || role === 'club_admin' || role === 'super_admin' || role === 'full_time_coach'
   const canManage = role === 'admin' || role === 'club_admin' || role === 'full_time_coach' // 超级管理员只能查看
-  const canAddStudent = role === 'admin' || role === 'club_admin' || role === 'part_time_coach' || role === 'full_time_coach'
-  const canEditOwn = role === 'part_time_coach' // 兼职教练可编辑/删除自己的私有学员
+  const canAddStudent = role === 'admin' || role === 'club_admin' || role === 'coach' || role === 'part_time_coach' || role === 'full_time_coach'
+  const canEditOwn = role === 'coach' || role === 'part_time_coach' // 教练可编辑/删除自己的私有学员
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">
-          {role === 'part_time_coach' ? '我的学员' : role === 'super_admin' ? '学员查看' : '学员管理'}
+          {(role === 'coach' || role === 'part_time_coach') ? '我的学员' : role === 'super_admin' ? '学员查看' : '学员管理'}
         </h1>
         <div className="flex items-center gap-2">
           <ClubSelector />
@@ -243,10 +243,10 @@ export default function StudentsPage() {
               <DialogHeader>
                 <DialogTitle>{editId ? '编辑学员' : '添加学员'}</DialogTitle>
                 <DialogDescription>
-                  {String(role) === 'part_time_coach' ? '选择学员归属并填写信息' : '填写学员信息'}
+                  {(String(role) === 'coach' || String(role) === 'part_time_coach') ? '选择学员归属并填写信息' : '填写学员信息'}
                 </DialogDescription>
               </DialogHeader>
-              {role === 'part_time_coach' && !editId && (
+              {(role === 'coach' || role === 'part_time_coach') && !editId && (
                 <div className="flex gap-2">
                   <Button
                     variant={studentType === 'private' ? 'default' : 'outline'}
@@ -274,7 +274,7 @@ export default function StudentsPage() {
                   </Button>
                 </div>
               )}
-              {role === 'part_time_coach' && !editId && studentType !== 'solo' && coachClubs.length > 1 && (
+              {(role === 'coach' || role === 'part_time_coach') && !editId && studentType !== 'solo' && coachClubs.length > 1 && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">所属俱乐部</label>
                   <Select value={selectedClubId} onValueChange={setSelectedClubId}>

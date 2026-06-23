@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       students: {
         include: { student: { select: { name: true } } },
       },
+      lessons: { select: { id: true } },
     },
     orderBy: [{ scheduledDate: 'asc' }, { startTime: 'asc' }],
   })
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
       teachingMode: c.teachingMode,
       location: c.location,
       remark: c.remark,
+      hasLesson: c.lessons.length > 0,
     }
   })
 

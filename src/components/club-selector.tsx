@@ -32,12 +32,15 @@ export function ClubSelector() {
         .then((data) => {
           setClubs(data)
           const saved = localStorage.getItem('currentClubId')
+          let newClubId: string
           if (saved && (saved === 'all' || data.some((c: Club) => c.id === parseInt(saved)))) {
-            setCurrentClubId(saved)
+            newClubId = saved
           } else {
-            setCurrentClubId('all')
-            localStorage.setItem('currentClubId', 'all')
+            newClubId = 'all'
           }
+          setCurrentClubId(newClubId)
+          localStorage.setItem('currentClubId', newClubId)
+          window.dispatchEvent(new CustomEvent('clubChanged', { detail: { clubId: newClubId } }))
         })
         .catch(() => {})
     } else {
@@ -48,22 +51,23 @@ export function ClubSelector() {
           if (Array.isArray(data) && data.length > 0) {
             setClubs(data)
             const saved = localStorage.getItem('currentClubId')
-            // 兼职教练角色默认选"全部俱乐部"
-            if (user?.role === 'part_time_coach') {
-              setCurrentClubId('all')
-              localStorage.setItem('currentClubId', 'all')
+            let newClubId: string
+            // 教练角色默认选"全部俱乐部"
+            if (user?.role === 'coach' || user?.role === 'part_time_coach') {
+              newClubId = 'all'
             } else {
               // 管理员/全职教练：有保存的且有效就用保存的，否则按俱乐部数量处理
               if (saved && (saved === 'all' || data.some((c: Club) => c.id === parseInt(saved)))) {
-                setCurrentClubId(saved)
+                newClubId = saved
               } else if (data.length > 1) {
-                setCurrentClubId('all')
-                localStorage.setItem('currentClubId', 'all')
+                newClubId = 'all'
               } else {
-                setCurrentClubId(String(data[0].id))
-                localStorage.setItem('currentClubId', String(data[0].id))
+                newClubId = String(data[0].id)
               }
             }
+            setCurrentClubId(newClubId)
+            localStorage.setItem('currentClubId', newClubId)
+            window.dispatchEvent(new CustomEvent('clubChanged', { detail: { clubId: newClubId } }))
           }
         })
         .catch(() => {})
@@ -76,9 +80,9 @@ export function ClubSelector() {
     window.dispatchEvent(new CustomEvent('clubChanged', { detail: { clubId: value } }))
   }
 
-  // 兼职教练角色：有俱乐部就显示选择器（方便切换"全部"和具体俱乐部）
-  // 管理员/全职教练角色：多俱乐部时才显示
-  if (role !== 'part_time_coach' && clubs.length <= 1) return null
+  // 教练角色：有俱乐部就显示选择器（方便切换"全部"和具体俱乐部）
+  // 管理员角色：多俱乐部时才显示
+  if (role !== 'coach' && role !== 'part_time_coach' && clubs.length <= 1) return null
 
   return (
     <Select value={currentClubId} onValueChange={handleChange}>

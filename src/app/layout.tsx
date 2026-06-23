@@ -39,8 +39,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       if (stored) {
         const user = JSON.parse(stored)
 
-        // 兼职教练和全职教练不允许访问管理页面，重定向到首页
-        if ((user.role === 'part_time_coach' || user.role === 'full_time_coach') && coachBlockedPaths.some(p => pathname.startsWith(p))) {
+        // 教练不允许访问管理页面，重定向到首页
+        if ((user.role === 'coach' || user.role === 'part_time_coach' || user.role === 'full_time_coach') && coachBlockedPaths.some(p => pathname.startsWith(p))) {
           router.replace('/')
           return
         }
@@ -82,7 +82,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     }
     checkMobile()
     window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
+
+    return () => {
+      window.removeEventListener('resize', checkMobile)
+    }
   }, [])
 
   // 登录页面：不显示侧边栏和头部

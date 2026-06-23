@@ -94,7 +94,7 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
 
   // 根据角色选择菜单
   const getMainItems = () => {
-    if (role === 'part_time_coach') return [...mainMenuItems, ...partTimeCoachMenuItems]
+    if (role === 'coach' || role === 'part_time_coach') return [...mainMenuItems, ...partTimeCoachMenuItems]
     if (role === 'full_time_coach') return [...mainMenuItems, ...fullTimeCoachMenuItems]
     if (role === 'super_admin') return mainMenuItems // 系统管理员只有首页
     return [...mainMenuItems, ...adminMenuItems]

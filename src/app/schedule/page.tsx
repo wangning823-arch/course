@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Plus, Trash2, Edit, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, Edit, Clock, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -56,6 +56,7 @@ interface CourseData {
   endTime: string
   students: string
   status: string
+  hasLesson?: boolean
 }
 
 interface Subject { id: number; name: string; durationMinutes: number }
@@ -68,6 +69,8 @@ export default function SchedulePage() {
   const [weekOffset, setWeekOffset] = React.useState(0)
   const [courses, setCourses] = React.useState<CourseData[]>([])
   const [loading, setLoading] = React.useState(false)
+  const [slideDirection, setSlideDirection] = React.useState<'left' | 'right' | null>(null)
+  const [isAnimating, setIsAnimating] = React.useState(false)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [detailDialogOpen, setDetailDialogOpen] = React.useState(false)
@@ -106,6 +109,71 @@ export default function SchedulePage() {
     d.getMonth() === today.getMonth() &&
     d.getDate() === today.getDate()
 
+  // 触摸滑动处理（左滑下一周，右滑上一周）
+  const touchStartX = React.useRef(0)
+  const touchStartY = React.useRef(0)
+  const touchStartTime = React.useRef(0)
+  const calendarRef = React.useRef<HTMLDivElement>(null)
+
+  // 使用原生事件监听器来阻止浏览器手势（React 事件不够可靠）
+  React.useEffect(() => {
+    const el = calendarRef.current
+    if (!el) return
+
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartX.current = e.touches[0].clientX
+      touchStartY.current = e.touches[0].clientY
+      touchStartTime.current = Date.now()
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      const deltaX = e.touches[0].clientX - touchStartX.current
+      const deltaY = e.touches[0].clientY - touchStartY.current
+      // 水平滑动时阻止浏览器默认行为（防止回退）
+      if (Math.abs(deltaX) > Math.abs(deltaY) * 1.2 && Math.abs(deltaX) > 10) {
+        e.preventDefault()
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+    }
+  }, [])
+
+  // 处理触摸结束（在 React 中处理以便更新 state）
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current
+    const duration = Date.now() - touchStartTime.current
+    // 水平滑动距离大于50px且大于垂直滑动，且时间合理（非长按）
+    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) && duration < 500 && !isAnimating) {
+      if (deltaX < 0) {
+        // 左滑 → 下一周
+        animateWeekChange(1)
+      } else {
+        // 右滑 → 上一周
+        animateWeekChange(-1)
+      }
+    }
+  }
+
+  // 带动画的周切换
+  const animateWeekChange = (direction: number) => {
+    if (isAnimating) return
+    setIsAnimating(true)
+    setSlideDirection(direction > 0 ? 'left' : 'right')
+    // 动画结束后切换周
+    setTimeout(() => {
+      setWeekOffset(prev => prev + direction)
+      setSlideDirection(null)
+      setTimeout(() => setIsAnimating(false), 50)
+    }, 150)
+  }
+
   // 加载下拉选项
   const loadOptions = React.useCallback(async () => {
     const stored = localStorage.getItem('user')
@@ -124,7 +192,7 @@ export default function SchedulePage() {
       if (!clubId || clubId === 'all') return
     }
     try {
-      const studentUrl = user?.role === 'part_time_coach' && user?.id
+      const studentUrl = (user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id
         ? `/api/students?clubId=${clubId}&coachId=${user.id}`
         : `/api/students?clubId=${clubId}`
       // 选择具体俱乐部时，只加载该俱乐部的科目（不传 coachId，避免返回私人科目）
@@ -132,7 +200,7 @@ export default function SchedulePage() {
       // 俱乐部管理员也能当教练，需要同时查询管理员列表
       const coachPromises = [
         fetch(subjectUrl),
-        fetch(`/api/users?role=part_time_coach,full_time_coach&clubId=${clubId}`),
+        fetch(`/api/users?role=coach,part_time_coach,full_time_coach&clubId=${clubId}`),
         fetch(`/api/campuses?clubId=${clubId}`),
         fetch(studentUrl),
       ]
@@ -150,7 +218,7 @@ export default function SchedulePage() {
       const adminData = adminRes ? await safeJson(adminRes) : []
       setSubjects(subData)
       // 兼职教练只能选自己；俱乐部管理员/全职教练可以选所有教练+管理员
-      if (user?.role === 'part_time_coach' && user?.id) {
+      if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
         setCoaches(coachData.filter((c: Coach) => c.id === user.id))
       } else {
         // 合并教练和管理员列表（去重）
@@ -180,7 +248,7 @@ export default function SchedulePage() {
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
     try {
-      const studentUrl = user?.role === 'part_time_coach' && user?.id
+      const studentUrl = (user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id
         ? `/api/students?clubId=${targetClubId}&coachId=${user.id}`
         : `/api/students?clubId=${targetClubId}`
       // 选择具体俱乐部时，只加载该俱乐部的科目（不传 coachId，避免返回私人科目）
@@ -204,7 +272,7 @@ export default function SchedulePage() {
       ])
       const adminData = adminRes ? await safeJson(adminRes) : []
       setSubjects(subData)
-      if (user?.role === 'part_time_coach' && user?.id) {
+      if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
         setCoaches(coachData.filter((c: Coach) => c.id === user.id))
       } else {
         const coachMap = new Map<number, Coach>()
@@ -233,7 +301,7 @@ export default function SchedulePage() {
       const endDate = getLocalDateStr(dates[6])
 
       let url: string
-      if (user?.role === 'part_time_coach' && user?.id) {
+      if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
         // 兼职教练：只看自己的课程，选择具体俱乐部时按俱乐部过滤
         url = `/api/courses?startDate=${startDate}&endDate=${endDate}&coachId=${user.id}`
         if (clubId && clubId !== 'all') {
@@ -280,7 +348,7 @@ export default function SchedulePage() {
     const stored = localStorage.getItem('user')
     if (stored) {
       const user = JSON.parse(stored)
-      if (user.role === 'part_time_coach' && user.id) {
+      if ((user.role === 'coach' || user.role === 'part_time_coach') && user.id) {
         setForm((prev) => ({ ...prev, coachId: String(user.id) }))
       }
     }
@@ -384,9 +452,13 @@ export default function SchedulePage() {
 
   const resetForm = () => {
     const currentClubId = localStorage.getItem('currentClubId')
+    const stored = localStorage.getItem('user')
+    const user = stored ? JSON.parse(stored) : null
     setForm({
       clubId: currentClubId && currentClubId !== 'all' ? currentClubId : '',
-      subjectId: '', coachId: '', campusId: '',
+      subjectId: '',
+      coachId: user?.role === 'coach' && user?.id ? String(user.id) : '',
+      campusId: '',
       scheduledDate: '', startTime: '09:00', endTime: '10:00',
       location: '', remark: '', studentIds: [],
     })
@@ -497,8 +569,8 @@ export default function SchedulePage() {
         <h1 className="text-2xl font-bold">排课管理</h1>
         <div className="flex items-center gap-3">
           <ClubSelector />
-          {/* 教练筛选（仅管理员和全职教练可见） */}
-          {role !== 'part_time_coach' && (
+          {/* 教练筛选（仅管理员可见） */}
+          {(role === 'club_admin' || role === 'super_admin') && (
             <Select value={coachFilter} onValueChange={setCoachFilter}>
               <SelectTrigger className="w-[130px]">
                 <SelectValue placeholder="筛选教练" />
@@ -661,7 +733,7 @@ export default function SchedulePage() {
 
       {/* Week Navigation */}
       <div className="flex items-center justify-between">
-        <Button variant="outline" size="sm" onClick={() => setWeekOffset(weekOffset - 1)}>
+        <Button variant="outline" size="sm" onClick={() => animateWeekChange(-1)}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <div className="flex items-center gap-2">
@@ -671,20 +743,34 @@ export default function SchedulePage() {
             {weekDates[6].toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}
           </span>
           {weekOffset !== 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setWeekOffset(0)}>
+            <Button variant="ghost" size="sm" onClick={() => {
+              const dir = weekOffset > 0 ? -1 : 1
+              animateWeekChange(dir)
+            }}>
               回到本周
             </Button>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => setWeekOffset(weekOffset + 1)}>
+        <Button variant="outline" size="sm" onClick={() => animateWeekChange(1)}>
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
 
       {/* Calendar Grid */}
-      <Card>
+      <Card
+        ref={calendarRef}
+        onTouchEnd={handleTouchEnd}
+        className="calendar-container overflow-hidden"
+      >
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto calendar-scroll-container"
+            style={{
+              transition: 'transform 0.15s ease-out, opacity 0.15s ease-out',
+              transform: slideDirection === 'left' ? 'translateX(-30px)' : slideDirection === 'right' ? 'translateX(30px)' : 'translateX(0)',
+              opacity: slideDirection ? 0.7 : 1,
+            }}
+          >
             <div className="flex" style={{ minHeight: `${hours.length * HOUR_HEIGHT + 40}px` }}>
               {/* 时间列 */}
               <div className="w-9 flex-shrink-0 relative border-r">
@@ -717,7 +803,40 @@ export default function SchedulePage() {
                     </div>
 
                     {/* 时间网格线 */}
-                    <div className="relative" style={{ height: `${hours.length * HOUR_HEIGHT}px` }}>
+                    <div
+                      className="relative cursor-pointer hover:bg-gray-50/50"
+                      style={{ height: `${hours.length * HOUR_HEIGHT}px` }}
+                      onClick={(e) => {
+                        // 点击空白区域时打开新建课程窗口
+                        const target = e.target as HTMLElement
+                        if (target.closest('[data-course-id]')) return // 点击课程块不触发
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        const y = e.clientY - rect.top
+                        const hourIdx = Math.floor(y / HOUR_HEIGHT)
+                        const hour = hours[hourIdx] || hours[0]
+                        // 自动填充日期和时间
+                        const dateStr = getLocalDateStr(d)
+                        const startTime = `${String(hour).padStart(2, '0')}:00`
+                        const endHour = hour + 1
+                        const endTime = `${String(Math.min(endHour, 23)).padStart(2, '0')}:00`
+                        // 重置表单并设置日期时间
+                        const stored = localStorage.getItem('user')
+                        const user = stored ? JSON.parse(stored) : null
+                        setForm({
+                          clubId: '',
+                          subjectId: '',
+                          coachId: user?.role === 'coach' && user?.id ? String(user.id) : '',
+                          campusId: '',
+                          scheduledDate: dateStr,
+                          startTime,
+                          endTime,
+                          location: '',
+                          remark: '',
+                          studentIds: [],
+                        })
+                        setDialogOpen(true)
+                      }}
+                    >
                       {hours.map((hour, i) => (
                         <div
                           key={hour}
@@ -740,7 +859,12 @@ export default function SchedulePage() {
                         return (
                           <div
                             key={course.id}
-                            className={`absolute ${getCourseColor(course.id)} text-white text-[10px] leading-tight rounded cursor-pointer hover:opacity-90 transition-opacity overflow-hidden`}
+                            data-course-id={course.id}
+                            className={`absolute text-white text-[10px] leading-tight rounded cursor-pointer hover:opacity-90 transition-opacity overflow-hidden ${
+                              course.hasLesson
+                                ? `${getCourseColor(course.id)} opacity-70 ring-2 ring-white/50`
+                                : getCourseColor(course.id)
+                            }`}
                             style={{
                               top: `${top}px`,
                               height: `${height - 2}px`,
@@ -757,6 +881,11 @@ export default function SchedulePage() {
                             <div className="opacity-80 truncate px-0.5">{course.coach}</div>
                             {pos.width > 30 && course.students && (
                               <div className="opacity-70 truncate px-0.5">{course.students}</div>
+                            )}
+                            {course.hasLesson && pos.width > 25 && (
+                              <div className="absolute top-0.5 right-0.5">
+                                <Check className="h-3 w-3" />
+                              </div>
                             )}
                           </div>
                         )
@@ -780,7 +909,14 @@ export default function SchedulePage() {
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{selectedCourse?.subject}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedCourse?.subject}
+              {selectedCourse?.hasLesson && (
+                <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                  已记录
+                </span>
+              )}
+            </DialogTitle>
           </DialogHeader>
           {selectedCourse && (
             <div className="space-y-2 text-sm">

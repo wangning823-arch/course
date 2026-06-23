@@ -36,7 +36,10 @@ export default function LoginPage() {
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
       // 非超管：存储俱乐部ID到 localStorage
-      if (data.user.clubId) {
+      // 教练默认选"全部俱乐部"
+      if (data.user.role === 'coach' || data.user.role === 'part_time_coach') {
+        localStorage.setItem('currentClubId', 'all')
+      } else if (data.user.clubId) {
         localStorage.setItem('currentClubId', String(data.user.clubId))
       }
       window.location.href = '/'

@@ -32,8 +32,8 @@ export default function StatisticsPage() {
     try {
       let url = `/api/statistics?period=${period}`
 
-      // 兼职教练：默认看自己所有俱乐部的统计，选择具体俱乐部时按俱乐部过滤
-      if (user?.role === 'part_time_coach' && user?.id) {
+      // 教练：默认看自己所有俱乐部的统计，选择具体俱乐部时按俱乐部过滤
+      if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
         url += `&coachId=${user.id}`
         if (clubId && clubId !== 'all') {
           url += `&clubId=${clubId}`
