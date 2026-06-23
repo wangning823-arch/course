@@ -19,8 +19,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // 兼职教练和全职教练不允许访问的管理页面
   const coachBlockedPaths = ['/admin/users', '/admin/clubs', '/admin/campuses', '/admin/coach-prices']
 
-  // 系统管理员不允许访问的页面（业务操作和俱乐部级别管理）
-  const superAdminBlockedPaths = ['/schedule', '/lessons', '/admin/campuses', '/admin/subjects', '/admin/coach-prices']
+  // 系统管理员不允许访问的页面（业务操作和俱乐部管理）
+  const superAdminBlockedPaths = ['/schedule', '/lessons', '/admin/campuses', '/admin/subjects', '/admin/coach-prices', '/feedback']
 
   // 检查登录状态 + 设置页面标题
   React.useEffect(() => {

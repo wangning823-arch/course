@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Home, Calendar, Timer, BarChart3, Settings, Users, Building2,
-  MapPin, BookOpen, GraduationCap, DollarSign, ChevronDown, ChevronLeft
+  MapPin, BookOpen, GraduationCap, DollarSign, ChevronDown, ChevronLeft,
+  MessageSquare
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -53,6 +54,7 @@ const systemAdminItems = {
     { icon: GraduationCap, label: '学员查看', href: '/admin/students' },
     { icon: Users, label: '用户管理', href: '/admin/users' },
     { icon: Building2, label: '俱乐部管理', href: '/admin/clubs' },
+    { icon: MessageSquare, label: '反馈管理', href: '/admin/feedback' },
   ],
   club_admin: [
     { icon: BarChart3, label: '课时统计', href: '/statistics' },
@@ -205,6 +207,23 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
             )}
           </ul>
         </nav>
+
+        {/* 底部固定菜单 - 意见反馈（系统管理员不显示） */}
+        {role !== 'super_admin' && (
+        <div className="border-t border-white/10 py-2">
+          <Link
+            href="/feedback"
+            className={cn(
+              'flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+              pathname === '/feedback' ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white'
+            )}
+            title={!open ? '意见反馈' : undefined}
+          >
+            <MessageSquare className="h-5 w-5 shrink-0" />
+            {open && <span>意见反馈</span>}
+          </Link>
+        </div>
+        )}
       </aside>
     </>
   )

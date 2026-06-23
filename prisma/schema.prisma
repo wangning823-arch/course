@@ -34,6 +34,8 @@ model User {
   coachPrices   CoachPrice[]
   coachStudents Student[]    @relation("CoachStudents")
   subjectCoaches Subject[]   @relation("SubjectCoach")
+  feedbacks     Feedback[]   @relation("FeedbackUser")
+  repliedFeedbacks Feedback[] @relation("FeedbackReplier")
 }
 
 // 俱乐部表
@@ -283,4 +285,27 @@ model SettlementItem {
   subject       Subject    @relation(fields: [subjectId], references: [id])
 
   @@index([settlementId])
+}
+
+// 用户反馈表
+model Feedback {
+  id            Int      @id @default(autoincrement())
+  userId        Int      // 提交用户ID
+  category      String   // 分类：feature/bug/other
+  title         String   // 标题
+  content       String   // 详细描述
+  status        String   @default("pending") // 状态：pending/processing/resolved
+  reply         String?  // 管理员回复
+  repliedAt     DateTime? // 回复时间
+  repliedById   Int?     // 回复人
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // 关联
+  user          User     @relation("FeedbackUser", fields: [userId], references: [id])
+  repliedBy     User?    @relation("FeedbackReplier", fields: [repliedById], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
