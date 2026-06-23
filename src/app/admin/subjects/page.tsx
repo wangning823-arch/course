@@ -37,15 +37,17 @@ export default function SubjectsPage() {
   const isClubAdmin = role === 'club_admin'
   const isPartTimeCoach = role === 'part_time_coach'
 
-  const fetchSubjects = async () => {
+  const fetchSubjects = React.useCallback(async (currentRole?: string, currentUserId?: number | null) => {
     setLoading(true)
     try {
+      const roleToUse = currentRole || role
+      const userIdToUse = currentUserId !== undefined ? currentUserId : userId
       let url: string
-      if (isPartTimeCoach && userId) {
+      if (roleToUse === 'part_time_coach' && userIdToUse) {
         // 兼职教练只看私人科目
-        url = `/api/subjects?clubId=private&coachId=${userId}`
+        url = `/api/subjects?clubId=private&coachId=${userIdToUse}`
       } else {
-        const clubId = isClubAdmin ? userClubId : localStorage.getItem('currentClubId')
+        const clubId = roleToUse === 'club_admin' ? userClubId : localStorage.getItem('currentClubId')
         url = clubId && clubId !== 'all'
           ? `/api/subjects?clubId=${clubId}`
           : '/api/subjects'
@@ -58,7 +60,7 @@ export default function SubjectsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [role, userId, userClubId])
 
   const fetchClubs = async () => {
     try {
@@ -79,18 +81,32 @@ export default function SubjectsPage() {
 
   React.useEffect(() => {
     if (isClubAdmin && !userClubId) return
-    fetchSubjects()
+    // 确保使用最新的 role 和 userId 调用
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      const user = JSON.parse(stored)
+      fetchSubjects(user.role, user.id)
+    } else {
+      fetchSubjects()
+    }
     fetchClubs()
-  }, [isClubAdmin, userClubId, role])
+  }, [isClubAdmin, userClubId, role, userId, isPartTimeCoach, fetchSubjects])
 
   // 监听俱乐部切换
   React.useEffect(() => {
     const handleClubChanged = () => {
-      fetchSubjects()
+      // 使用 localStorage 中的最新用户数据
+      const stored = localStorage.getItem('user')
+      if (stored) {
+        const user = JSON.parse(stored)
+        fetchSubjects(user.role, user.id)
+      } else {
+        fetchSubjects()
+      }
     }
     window.addEventListener('clubChanged', handleClubChanged)
     return () => window.removeEventListener('clubChanged', handleClubChanged)
-  }, [])
+  }, [fetchSubjects])
 
   const handleSubmit = async () => {
     try {
@@ -160,7 +176,15 @@ export default function SubjectsPage() {
           {isPartTimeCoach && (
             <span className="text-sm text-gray-500">私人科目</span>
           )}
-          <Button variant="outline" onClick={fetchSubjects}>
+          <Button variant="outline" onClick={() => {
+            const stored = localStorage.getItem('user')
+            if (stored) {
+              const user = JSON.parse(stored)
+              fetchSubjects(user.role, user.id)
+            } else {
+              fetchSubjects()
+            }
+          }}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新
           </Button>
