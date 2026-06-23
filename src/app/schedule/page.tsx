@@ -69,8 +69,12 @@ export default function SchedulePage() {
   const [weekOffset, setWeekOffset] = React.useState(0)
   const [courses, setCourses] = React.useState<CourseData[]>([])
   const [loading, setLoading] = React.useState(false)
-  const [slideDirection, setSlideDirection] = React.useState<'left' | 'right' | null>(null)
-  const [isAnimating, setIsAnimating] = React.useState(false)
+  // 动画状态：idle-无动画, preparing-准备中, true-滑动中
+  const [isAnimating, setIsAnimating] = React.useState<boolean | 'preparing'>(false)
+  const [animDirection, setAnimDirection] = React.useState<'left' | 'right'>('left')
+  // 用于动画的旧数据
+  const [prevWeekOffset, setPrevWeekOffset] = React.useState<number | null>(null)
+  const [prevCourses, setPrevCourses] = React.useState<CourseData[]>([])
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [detailDialogOpen, setDetailDialogOpen] = React.useState(false)
@@ -144,13 +148,12 @@ export default function SchedulePage() {
     }
   }, [])
 
-  // 处理触摸结束（在 React 中处理以便更新 state）
+  // 处理触摸结束
   const handleTouchEnd = (e: React.TouchEvent) => {
     const deltaX = e.changedTouches[0].clientX - touchStartX.current
     const deltaY = e.changedTouches[0].clientY - touchStartY.current
     const duration = Date.now() - touchStartTime.current
-    // 水平滑动距离大于50px且大于垂直滑动，且时间合理（非长按）
-    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) && duration < 500 && !isAnimating) {
+    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) && duration < 500 && isAnimating === false) {
       if (deltaX < 0) {
         // 左滑 → 下一周
         animateWeekChange(1)
@@ -161,17 +164,166 @@ export default function SchedulePage() {
     }
   }
 
+  // 获取指定偏移的周日期
+  const getWeekDatesForOffset = (offset: number) => {
+    const now = new Date()
+    const monday = new Date(now)
+    monday.setDate(now.getDate() - now.getDay() + 1 + offset * 7)
+    const dates = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday)
+      d.setDate(monday.getDate() + i)
+      dates.push(d)
+    }
+    return dates
+  }
+
+  // 获取指定日期的课程
+  const getCoursesForDate = (dateStr: string, courseList: CourseData[]) => {
+    return courseList.filter((c) => c.date === dateStr)
+  }
+
+  // 渲染日历网格
+  const renderCalendarGrid = (dates: Date[], courseList: CourseData[]) => {
+    return (
+      <div className="flex" style={{ minHeight: `${hours.length * HOUR_HEIGHT + 40}px` }}>
+        {/* 时间列 */}
+        <div className="w-9 flex-shrink-0 relative border-r">
+          <div className="h-10 border-b"></div>
+          {hours.map((hour, i) => (
+            <div
+              key={hour}
+              className="absolute w-full text-[10px] text-gray-400 text-right pr-1"
+              style={{ top: `${40 + i * HOUR_HEIGHT}px`, transform: 'translateY(-50%)' }}
+            >
+              {hour}
+            </div>
+          ))}
+        </div>
+
+        {/* 日列容器 */}
+        {dates.map((d, dayIdx) => {
+          const dateStr = getLocalDateStr(d)
+          const dayCourses = courseList.filter((c) => c.date === dateStr)
+          const layout = getCourseLayout(dayCourses)
+
+          return (
+            <div key={dayIdx} className="flex-1 relative border-l">
+              <div className={`h-10 border-b flex items-center justify-center text-xs ${isToday(d) ? 'text-blue-500 font-bold bg-blue-50' : 'text-gray-500'}`}>
+                <div>
+                  <div className="text-[10px]">{dayNames[dayIdx]}</div>
+                  <div>{d.getDate()}</div>
+                </div>
+              </div>
+
+              <div
+                className="relative cursor-pointer hover:bg-gray-50/50"
+                style={{ height: `${hours.length * HOUR_HEIGHT}px` }}
+                onClick={(e) => {
+                  const target = e.target as HTMLElement
+                  if (target.closest('[data-course-id]')) return
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const y = e.clientY - rect.top
+                  const hourIdx = Math.floor(y / HOUR_HEIGHT)
+                  const hour = hours[hourIdx] || hours[0]
+                  const startTime = `${String(hour).padStart(2, '0')}:00`
+                  const endHour = hour + 1
+                  const endTime = `${String(Math.min(endHour, 23)).padStart(2, '0')}:00`
+                  const stored = localStorage.getItem('user')
+                  const user = stored ? JSON.parse(stored) : null
+                  setForm({
+                    clubId: '',
+                    subjectId: '',
+                    coachId: user?.role === 'coach' && user?.id ? String(user.id) : '',
+                    campusId: '',
+                    scheduledDate: dateStr,
+                    startTime,
+                    endTime,
+                    location: '',
+                    remark: '',
+                    studentIds: [],
+                  })
+                  setDialogOpen(true)
+                }}
+              >
+                {hours.map((hour, i) => (
+                  <div
+                    key={hour}
+                    className="absolute w-full border-b border-gray-100"
+                    style={{ top: `${i * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
+                  />
+                ))}
+
+                {isToday(d) && (
+                  <div className="absolute inset-0 bg-blue-50/20 pointer-events-none" />
+                )}
+
+                {dayCourses.map((course) => {
+                  const pos = layout.get(course.id) || { left: 0, width: 100 }
+                  const top = getCourseTop(course)
+                  const height = getCourseHeight(course)
+
+                  return (
+                    <div
+                      key={course.id}
+                      data-course-id={course.id}
+                      className={`absolute text-white text-[10px] leading-tight rounded cursor-pointer hover:opacity-90 transition-opacity overflow-hidden ${
+                        course.hasLesson
+                          ? `${getCourseColor(course.id)} opacity-70 ring-2 ring-white/50`
+                          : getCourseColor(course.id)
+                      }`}
+                      style={{
+                        top: `${top}px`,
+                        height: `${height - 2}px`,
+                        left: `calc(${pos.left}% + 1px)`,
+                        width: `calc(${pos.width}% - 2px)`,
+                      }}
+                      onClick={() => {
+                        setSelectedCourse(course)
+                        setDetailDialogOpen(true)
+                        checkCourseRecorded(course.id)
+                      }}
+                    >
+                      <div className="font-medium truncate px-0.5">{course.subject}</div>
+                      <div className="opacity-80 truncate px-0.5">{course.coach}</div>
+                      {pos.width > 30 && course.students && (
+                        <div className="opacity-70 truncate px-0.5">{course.students}</div>
+                      )}
+                      {course.hasLesson && pos.width > 25 && (
+                        <div className="absolute top-0.5 right-0.5">
+                          <Check className="h-3 w-3" />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   // 带动画的周切换
   const animateWeekChange = (direction: number) => {
     if (isAnimating) return
-    setIsAnimating(true)
-    setSlideDirection(direction > 0 ? 'left' : 'right')
-    // 动画结束后切换周
-    setTimeout(() => {
-      setWeekOffset(prev => prev + direction)
-      setSlideDirection(null)
-      setTimeout(() => setIsAnimating(false), 50)
-    }, 150)
+    // 保存旧数据
+    setPrevWeekOffset(weekOffset)
+    setPrevCourses(courses)
+    setAnimDirection(direction > 0 ? 'left' : 'right')
+    // 先设置新内容到屏幕外（无动画）
+    setIsAnimating('preparing')
+    // 切换到新周
+    setWeekOffset(prev => prev + direction)
+    // 然后开始动画
+    requestAnimationFrame(() => {
+      setIsAnimating(true)
+      setTimeout(() => {
+        setIsAnimating(false)
+        setPrevWeekOffset(null)
+      }, 350)
+    })
   }
 
   // 加载下拉选项
@@ -467,12 +619,6 @@ export default function SchedulePage() {
   // 每小时高度（px）
   const HOUR_HEIGHT = 48
 
-  // 获取某天的所有课程
-  const getCoursesForDay = (dayIdx: number): CourseData[] => {
-    const dateStr = getLocalDateStr(weekDates[dayIdx])
-    return courses.filter((c) => c.date === dateStr)
-  }
-
   // 计算课程顶部偏移（从 hours 起始时间算起）
   const getCourseTop = (course: CourseData) => {
     const [sh, sm] = course.startTime.split(':').map(Number)
@@ -744,8 +890,19 @@ export default function SchedulePage() {
           </span>
           {weekOffset !== 0 && (
             <Button variant="ghost" size="sm" onClick={() => {
-              const dir = weekOffset > 0 ? -1 : 1
-              animateWeekChange(dir)
+              // 直接跳转到本周（带动画）
+              setPrevWeekOffset(weekOffset)
+              setPrevCourses(courses)
+              setAnimDirection(weekOffset > 0 ? 'right' : 'left')
+              setIsAnimating('preparing')
+              setWeekOffset(0)
+              requestAnimationFrame(() => {
+                setIsAnimating(true)
+                setTimeout(() => {
+                  setIsAnimating(false)
+                  setPrevWeekOffset(null)
+                }, 350)
+              })
             }}>
               回到本周
             </Button>
@@ -762,139 +919,32 @@ export default function SchedulePage() {
         onTouchEnd={handleTouchEnd}
         className="calendar-container overflow-hidden"
       >
-        <CardContent className="p-0">
+        <CardContent className="p-0 relative" style={{ minHeight: `${hours.length * HOUR_HEIGHT + 40}px` }}>
+          {/* 旧内容（从中心滑出） */}
+          {isAnimating !== false && prevWeekOffset !== null && (
+            <div
+              className="absolute inset-0 overflow-x-auto"
+              style={{
+                transition: isAnimating === true ? 'transform 0.3s ease-out' : 'none',
+                transform: isAnimating === true
+                  ? (animDirection === 'left' ? 'translateX(-100%)' : 'translateX(100%)')
+                  : 'translateX(0)',
+              }}
+            >
+              {renderCalendarGrid(getWeekDatesForOffset(prevWeekOffset), prevCourses)}
+            </div>
+          )}
+          {/* 新内容（从屏幕外滑入） */}
           <div
             className="overflow-x-auto calendar-scroll-container"
             style={{
-              transition: 'transform 0.15s ease-out, opacity 0.15s ease-out',
-              transform: slideDirection === 'left' ? 'translateX(-30px)' : slideDirection === 'right' ? 'translateX(30px)' : 'translateX(0)',
-              opacity: slideDirection ? 0.7 : 1,
+              transition: isAnimating === true ? 'transform 0.3s ease-out' : 'none',
+              transform: isAnimating === 'preparing'
+                ? (animDirection === 'left' ? 'translateX(100%)' : 'translateX(-100%)')
+                : 'translateX(0)',
             }}
           >
-            <div className="flex" style={{ minHeight: `${hours.length * HOUR_HEIGHT + 40}px` }}>
-              {/* 时间列 */}
-              <div className="w-9 flex-shrink-0 relative border-r">
-                {/* 表头占位 */}
-                <div className="h-10 border-b"></div>
-                {hours.map((hour, i) => (
-                  <div
-                    key={hour}
-                    className="absolute w-full text-[10px] text-gray-400 text-right pr-1"
-                    style={{ top: `${40 + i * HOUR_HEIGHT}px`, transform: 'translateY(-50%)' }}
-                  >
-                    {hour}
-                  </div>
-                ))}
-              </div>
-
-              {/* 日列容器 */}
-              {weekDates.map((d, dayIdx) => {
-                const dayCourses = getCoursesForDay(dayIdx)
-                const layout = getCourseLayout(dayCourses)
-
-                return (
-                  <div key={dayIdx} className="flex-1 relative border-l">
-                    {/* 表头 */}
-                    <div className={`h-10 border-b flex items-center justify-center text-xs ${isToday(d) ? 'text-blue-500 font-bold bg-blue-50' : 'text-gray-500'}`}>
-                      <div>
-                        <div className="text-[10px]">{dayNames[dayIdx]}</div>
-                        <div>{d.getDate()}</div>
-                      </div>
-                    </div>
-
-                    {/* 时间网格线 */}
-                    <div
-                      className="relative cursor-pointer hover:bg-gray-50/50"
-                      style={{ height: `${hours.length * HOUR_HEIGHT}px` }}
-                      onClick={(e) => {
-                        // 点击空白区域时打开新建课程窗口
-                        const target = e.target as HTMLElement
-                        if (target.closest('[data-course-id]')) return // 点击课程块不触发
-                        const rect = e.currentTarget.getBoundingClientRect()
-                        const y = e.clientY - rect.top
-                        const hourIdx = Math.floor(y / HOUR_HEIGHT)
-                        const hour = hours[hourIdx] || hours[0]
-                        // 自动填充日期和时间
-                        const dateStr = getLocalDateStr(d)
-                        const startTime = `${String(hour).padStart(2, '0')}:00`
-                        const endHour = hour + 1
-                        const endTime = `${String(Math.min(endHour, 23)).padStart(2, '0')}:00`
-                        // 重置表单并设置日期时间
-                        const stored = localStorage.getItem('user')
-                        const user = stored ? JSON.parse(stored) : null
-                        setForm({
-                          clubId: '',
-                          subjectId: '',
-                          coachId: user?.role === 'coach' && user?.id ? String(user.id) : '',
-                          campusId: '',
-                          scheduledDate: dateStr,
-                          startTime,
-                          endTime,
-                          location: '',
-                          remark: '',
-                          studentIds: [],
-                        })
-                        setDialogOpen(true)
-                      }}
-                    >
-                      {hours.map((hour, i) => (
-                        <div
-                          key={hour}
-                          className="absolute w-full border-b border-gray-100"
-                          style={{ top: `${i * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }}
-                        />
-                      ))}
-
-                      {/* 今日高亮 */}
-                      {isToday(d) && (
-                        <div className="absolute inset-0 bg-blue-50/20 pointer-events-none" />
-                      )}
-
-                      {/* 课程块 */}
-                      {dayCourses.map((course) => {
-                        const pos = layout.get(course.id) || { left: 0, width: 100 }
-                        const top = getCourseTop(course)
-                        const height = getCourseHeight(course)
-
-                        return (
-                          <div
-                            key={course.id}
-                            data-course-id={course.id}
-                            className={`absolute text-white text-[10px] leading-tight rounded cursor-pointer hover:opacity-90 transition-opacity overflow-hidden ${
-                              course.hasLesson
-                                ? `${getCourseColor(course.id)} opacity-70 ring-2 ring-white/50`
-                                : getCourseColor(course.id)
-                            }`}
-                            style={{
-                              top: `${top}px`,
-                              height: `${height - 2}px`,
-                              left: `calc(${pos.left}% + 1px)`,
-                              width: `calc(${pos.width}% - 2px)`,
-                            }}
-                            onClick={() => {
-                              setSelectedCourse(course)
-                              setDetailDialogOpen(true)
-                              checkCourseRecorded(course.id)
-                            }}
-                          >
-                            <div className="font-medium truncate px-0.5">{course.subject}</div>
-                            <div className="opacity-80 truncate px-0.5">{course.coach}</div>
-                            {pos.width > 30 && course.students && (
-                              <div className="opacity-70 truncate px-0.5">{course.students}</div>
-                            )}
-                            {course.hasLesson && pos.width > 25 && (
-                              <div className="absolute top-0.5 right-0.5">
-                                <Check className="h-3 w-3" />
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            {renderCalendarGrid(weekDates, courses)}
           </div>
           {loading && (
             <div className="text-center py-4 text-sm text-gray-500">加载中...</div>
