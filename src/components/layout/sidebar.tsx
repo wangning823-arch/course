@@ -9,6 +9,9 @@ import {
   MessageSquare
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
+import { authFetch } from '@/lib/fetch-client'
 
 interface SidebarProps {
   open: boolean
@@ -66,31 +69,29 @@ const systemAdminItems = {
 
 export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
   const pathname = usePathname()
+  const user = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
   const [adminOpen, setAdminOpen] = React.useState(true)
   const [logoText, setLogoText] = React.useState('课时管理系统')
-  const [role, setRole] = React.useState('')
+
+  const role = user?.role || ''
 
   React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      setRole(user.role || '')
-      if (user.role !== 'super_admin') {
-        // 从用户信息中获取 clubId，查对应俱乐部名称
-        const clubId = user.clubId || localStorage.getItem('currentClubId')
-        if (clubId) {
-          fetch(`/api/clubs/${clubId}`)
-            .then((res) => res.json())
-            .then((club) => {
-              if (club?.name) {
-                setLogoText(club.name)
-              }
-            })
-            .catch(() => {})
-        }
+    if (user && user.role !== 'super_admin') {
+      // 从用户信息中获取 clubId，查对应俱乐部名称
+      const clubId = user.clubId || (currentClubId && currentClubId !== 'all' ? currentClubId : null)
+      if (clubId) {
+        authFetch(`/api/clubs/${clubId}`)
+          .then((res) => res.json())
+          .then((club) => {
+            if (club?.name) {
+              setLogoText(club.name)
+            }
+          })
+          .catch(() => {})
       }
     }
-  }, [])
+  }, [user, currentClubId])
 
   // 根据角色选择菜单
   const getMainItems = () => {

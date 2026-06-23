@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { authFetch } from '@/lib/fetch-client'
+import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
 
 const teachingModeLabels: Record<string, string> = {
   private: '一对一',
@@ -22,6 +24,8 @@ interface Subject { id: number; name: string }
 interface Club { id: number; name: string }
 
 export default function CoachPricesPage() {
+  const user = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
   const [prices, setPrices] = React.useState<any[]>([])
   const [coaches, setCoaches] = React.useState<Coach[]>([])
   const [subjects, setSubjects] = React.useState<Subject[]>([])
@@ -30,34 +34,31 @@ export default function CoachPricesPage() {
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ coachId: '', subjectId: '', teachingMode: 'private', price: '' })
-  const [role, setRole] = React.useState('')
+
+  const role = user?.role || ''
 
   // 获取当前用户信息和俱乐部列表
   React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (!stored) return
-    const user = JSON.parse(stored)
-    setRole(user.role || '')
+    if (!user) return
 
     if (user.role === 'super_admin') {
       // 超管：获取所有俱乐部
       authFetch('/api/clubs').then((res) => res.json()).then((data) => {
         setClubs(data)
-        const saved = localStorage.getItem('currentClubId')
-        if (saved && data.some((c: Club) => c.id === parseInt(saved))) {
-          setSelectedClubId(saved)
+        if (currentClubId && currentClubId !== 'all' && data.some((c: Club) => c.id === parseInt(currentClubId))) {
+          setSelectedClubId(currentClubId)
         } else if (data.length > 0) {
           setSelectedClubId(String(data[0].id))
         }
       })
     } else {
       // 俱乐部管理员/教练：直接用自己的 clubId
-      const clubId = user.clubId || localStorage.getItem('currentClubId')
+      const clubId = user.clubId || (currentClubId && currentClubId !== 'all' ? currentClubId : null)
       if (clubId) {
         setSelectedClubId(String(clubId))
       }
     }
-  }, [])
+  }, [user, currentClubId])
 
   const fetchPrices = async () => {
     if (!selectedClubId) return

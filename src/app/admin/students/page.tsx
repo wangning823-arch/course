@@ -12,11 +12,15 @@ import { Badge } from '@/components/ui/badge'
 import { ClubSelector } from '@/components/club-selector'
 import { authFetch } from '@/lib/fetch-client'
 import { useDebounce } from '@/hooks/use-debounce'
+import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
 
 interface Coach { id: number; name: string }
 interface Club { id: number; name: string }
 
 export default function StudentsPage() {
+  const user = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
   const [students, setStudents] = React.useState<any[]>([])
   const [loading, setLoading] = React.useState(true)
   const [search, setSearch] = React.useState('')
@@ -24,40 +28,28 @@ export default function StudentsPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ name: '', phone: '', gender: '1', parentName: '', parentPhone: '' })
   const [editId, setEditId] = React.useState<number | null>(null)
-  const [role, setRole] = React.useState<string>('')
-  const [userId, setUserId] = React.useState<number | null>(null)
   const [coaches, setCoaches] = React.useState<Coach[]>([])
   const [coachClubs, setCoachClubs] = React.useState<Club[]>([])
   const [selectedClubId, setSelectedClubId] = React.useState<string>('')
   const [studentType, setStudentType] = React.useState<'shared' | 'private' | 'solo'>('private')
 
-  React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      setRole(user.role || '')
-      setUserId(user.id || null)
-    }
-  }, [])
+  const role = user?.role || ''
+  const userId = user?.id || null
 
   const fetchStudents = React.useCallback(async () => {
     setLoading(true)
     try {
-      const stored = localStorage.getItem('user')
-      const user = stored ? JSON.parse(stored) : null
-      const clubId = localStorage.getItem('currentClubId') || user?.clubId
-
       let url = `/api/students?search=${debouncedSearch}`
       // 教练：默认看所有俱乐部学员，选择具体俱乐部时按俱乐部过滤
-      if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
-        url += `&coachId=${user.id}`
-        if (clubId && clubId !== 'all') {
-          url += `&clubId=${clubId}`
+      if ((role === 'coach' || role === 'part_time_coach') && userId) {
+        url += `&coachId=${userId}`
+        if (currentClubId && currentClubId !== 'all') {
+          url += `&clubId=${currentClubId}`
         }
       } else {
         // 管理员/全职教练：按俱乐部过滤
-        if (clubId && clubId !== 'all') {
-          url += `&clubId=${clubId}`
+        if (currentClubId && currentClubId !== 'all') {
+          url += `&clubId=${currentClubId}`
         }
       }
 
@@ -74,24 +66,21 @@ export default function StudentsPage() {
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch])
+  }, [debouncedSearch, role, userId, currentClubId])
 
   // 加载教练列表（管理员用）
   const fetchCoaches = React.useCallback(async () => {
     if (role !== 'admin' && role !== 'club_admin' && role !== 'super_admin' && role !== 'full_time_coach') return
-    const stored = localStorage.getItem('user')
-    const user = stored ? JSON.parse(stored) : null
-    const clubId = localStorage.getItem('currentClubId') || user?.clubId
-    if (!clubId) return
+    if (!currentClubId || currentClubId === 'all') return
     try {
-      const res = await authFetch(`/api/users?role=coach,part_time_coach,full_time_coach&clubId=${clubId}`)
+      const res = await authFetch(`/api/users?role=coach,part_time_coach,full_time_coach&clubId=${currentClubId}`)
       if (!res.ok) return
       const data = await res.json()
       setCoaches(data)
     } catch (e) {
       console.error('加载教练失败:', e)
     }
-  }, [role])
+  }, [role, currentClubId])
 
   // 加载教练所属俱乐部列表
   const fetchCoachClubs = React.useCallback(async () => {
@@ -102,16 +91,15 @@ export default function StudentsPage() {
       const data = await res.json()
       setCoachClubs(data)
       // 默认选中 currentClubId 或第一个俱乐部
-      const clubId = localStorage.getItem('currentClubId')
-      if (clubId && data.some((c: Club) => c.id === parseInt(clubId))) {
-        setSelectedClubId(clubId)
+      if (currentClubId && currentClubId !== 'all' && data.some((c: Club) => c.id === parseInt(currentClubId))) {
+        setSelectedClubId(currentClubId)
       } else if (data.length > 0) {
         setSelectedClubId(String(data[0].id))
       }
     } catch (e) {
       console.error('加载俱乐部失败:', e)
     }
-  }, [role])
+  }, [role, currentClubId])
 
   React.useEffect(() => {
     fetchStudents()
@@ -122,15 +110,11 @@ export default function StudentsPage() {
     fetchCoachClubs()
   }, [fetchCoaches, fetchCoachClubs])
 
-  // 监听俱乐部切换
+  // 监听俱乐部切换（Zustand store 变化时自动重新获取数据）
   React.useEffect(() => {
-    const handleClubChanged = () => {
-      fetchStudents()
-      fetchCoaches()
-    }
-    window.addEventListener('clubChanged', handleClubChanged)
-    return () => window.removeEventListener('clubChanged', handleClubChanged)
-  }, [fetchStudents, fetchCoaches])
+    fetchStudents()
+    fetchCoaches()
+  }, [currentClubId, fetchStudents, fetchCoaches])
 
   const handleSubmit = async () => {
     try {
@@ -147,8 +131,7 @@ export default function StudentsPage() {
           submitData.coachId = studentType === 'private' ? userId : null
         }
       } else {
-        const clubId = localStorage.getItem('currentClubId')
-        submitData.clubId = clubId ? parseInt(clubId) : null
+        submitData.clubId = currentClubId && currentClubId !== 'all' ? parseInt(currentClubId) : null
       }
 
       if (editId) {

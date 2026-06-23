@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { authFetch } from '@/lib/fetch-client'
 import { User, UserWithClubs, Club, UserRole } from '@/types/api'
 import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
 
 const roleLabels: Record<UserRole, string> = {
   super_admin: '系统管理员',
@@ -28,13 +29,14 @@ const roleColors: Record<UserRole, 'default' | 'success' | 'warning' | 'secondar
 }
 
 export default function UsersPage() {
+  const storeUser = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
   const [users, setUsers] = React.useState<UserWithClubs[]>([])
   const [clubs, setClubs] = React.useState<Club[]>([])
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ name: '', phone: '', role: 'part_time_coach' as UserRole, password: '', clubId: '' })
   const [editId, setEditId] = React.useState<number | null>(null)
-  const storeUser = useUserStore((s) => s.user)
   const [filterClubId, setFilterClubId] = React.useState<string>('all')
   const [phoneExists, setPhoneExists] = React.useState(false)
 
@@ -109,12 +111,9 @@ export default function UsersPage() {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      // 从 localStorage 实时读取用户信息，确保拿到最新的 clubId
-      const stored = localStorage.getItem('user')
-      const user = stored ? JSON.parse(stored) : null
-      if (user?.role === 'club_admin' && user?.clubId) {
+      if (storeUser?.role === 'club_admin' && storeUser?.clubId) {
         // 俱乐部管理员：强制用自己的 clubId，忽略传入参数
-        params.set('clubId', String(user.clubId))
+        params.set('clubId', String(storeUser.clubId))
       } else if (clubId && clubId !== 'all') {
         params.set('clubId', clubId)
       }
@@ -127,7 +126,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [storeUser])
 
   const fetchClubs = async () => {
     try {

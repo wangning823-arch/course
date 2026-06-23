@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { ClubSelector } from '@/components/club-selector'
 import { authFetch } from '@/lib/fetch-client'
+import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
 
 // 本地日期格式化（避免时区偏移）
 function getLocalDateStr(d: Date) {
@@ -66,6 +68,8 @@ interface Student { id: number; name: string }
 
 export default function SchedulePage() {
   const router = useRouter()
+  const user = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
   const [weekOffset, setWeekOffset] = React.useState(0)
   const [courses, setCourses] = React.useState<CourseData[]>([])
   const [loading, setLoading] = React.useState(false)
@@ -82,7 +86,8 @@ export default function SchedulePage() {
   const [courseRecorded, setCourseRecorded] = React.useState(false)
   const [recording, setRecording] = React.useState(false)
   const [coachFilter, setCoachFilter] = React.useState('all')
-  const [role, setRole] = React.useState('')
+
+  const role = user?.role || ''
 
   // 下拉选项数据
   const [subjects, setSubjects] = React.useState<Subject[]>([])
@@ -229,8 +234,6 @@ export default function SchedulePage() {
                   const startTime = `${String(hour).padStart(2, '0')}:00`
                   const endHour = hour + 1
                   const endTime = `${String(Math.min(endHour, 23)).padStart(2, '0')}:00`
-                  const stored = localStorage.getItem('user')
-                  const user = stored ? JSON.parse(stored) : null
                   setForm({
                     clubId: '',
                     subjectId: '',
@@ -328,9 +331,7 @@ export default function SchedulePage() {
 
   // 加载下拉选项
   const loadOptions = React.useCallback(async () => {
-    const stored = localStorage.getItem('user')
-    const user = stored ? JSON.parse(stored) : null
-    let clubId = localStorage.getItem('currentClubId')
+    let clubId = currentClubId
     // 当未选择俱乐部时，从用户所属俱乐部中取第一个来加载选项
     if (!clubId || clubId === 'all') {
       try {
@@ -344,20 +345,20 @@ export default function SchedulePage() {
       if (!clubId || clubId === 'all') return
     }
     try {
-      const studentUrl = (user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id
+      const studentUrl = (role === 'coach' || role === 'part_time_coach') && user?.id
         ? `/api/students?clubId=${clubId}&coachId=${user.id}`
         : `/api/students?clubId=${clubId}`
       // 选择具体俱乐部时，只加载该俱乐部的科目（不传 coachId，避免返回私人科目）
       const subjectUrl = `/api/subjects?clubId=${clubId}`
       // 俱乐部管理员也能当教练，需要同时查询管理员列表
       const coachPromises = [
-        fetch(subjectUrl),
-        fetch(`/api/users?role=coach,part_time_coach,full_time_coach&clubId=${clubId}`),
-        fetch(`/api/campuses?clubId=${clubId}`),
-        fetch(studentUrl),
+        authFetch(subjectUrl),
+        authFetch(`/api/users?role=coach,part_time_coach,full_time_coach&clubId=${clubId}`),
+        authFetch(`/api/campuses?clubId=${clubId}`),
+        authFetch(studentUrl),
       ]
-      if (user?.role === 'club_admin' || user?.role === 'full_time_coach') {
-        coachPromises.push(fetch(`/api/users?role=club_admin&clubId=${clubId}`))
+      if (role === 'club_admin' || role === 'full_time_coach') {
+        coachPromises.push(authFetch(`/api/users?role=club_admin&clubId=${clubId}`))
       }
       const [subRes, coachRes, campusRes, studentRes, adminRes] = await Promise.all(coachPromises)
       const safeJson = async (res: Response) => {
@@ -397,22 +398,20 @@ export default function SchedulePage() {
 
   // 加载指定俱乐部的下拉选项（切换俱乐部时使用）
   const loadOptionsForClub = React.useCallback(async (targetClubId: string) => {
-    const stored = localStorage.getItem('user')
-    const user = stored ? JSON.parse(stored) : null
     try {
-      const studentUrl = (user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id
+      const studentUrl = (role === 'coach' || role === 'part_time_coach') && user?.id
         ? `/api/students?clubId=${targetClubId}&coachId=${user.id}`
         : `/api/students?clubId=${targetClubId}`
       // 选择具体俱乐部时，只加载该俱乐部的科目（不传 coachId，避免返回私人科目）
       const subjectUrl = `/api/subjects?clubId=${targetClubId}`
       const coachPromises = [
-        fetch(subjectUrl),
-        fetch(`/api/users?role=part_time_coach,full_time_coach&clubId=${targetClubId}`),
-        fetch(`/api/campuses?clubId=${targetClubId}`),
-        fetch(studentUrl),
+        authFetch(subjectUrl),
+        authFetch(`/api/users?role=part_time_coach,full_time_coach&clubId=${targetClubId}`),
+        authFetch(`/api/campuses?clubId=${targetClubId}`),
+        authFetch(studentUrl),
       ]
-      if (user?.role === 'club_admin' || user?.role === 'full_time_coach') {
-        coachPromises.push(fetch(`/api/users?role=club_admin&clubId=${targetClubId}`))
+      if (role === 'club_admin' || role === 'full_time_coach') {
+        coachPromises.push(authFetch(`/api/users?role=club_admin&clubId=${targetClubId}`))
       }
       const [subRes, coachRes, campusRes, studentRes, adminRes] = await Promise.all(coachPromises)
       const safeJson = async (res: Response) => {
@@ -441,11 +440,6 @@ export default function SchedulePage() {
 
   // 加载课程数据
   const loadCourses = React.useCallback(async () => {
-    // 获取当前用户信息
-    const stored = localStorage.getItem('user')
-    const user = stored ? JSON.parse(stored) : null
-    const clubId = localStorage.getItem('currentClubId')
-
     setLoading(true)
     try {
       const dates = getWeekDates(weekOffset)
@@ -453,16 +447,16 @@ export default function SchedulePage() {
       const endDate = getLocalDateStr(dates[6])
 
       let url: string
-      if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
+      if ((role === 'coach' || role === 'part_time_coach') && user?.id) {
         // 兼职教练：只看自己的课程，选择具体俱乐部时按俱乐部过滤
         url = `/api/courses?startDate=${startDate}&endDate=${endDate}&coachId=${user.id}`
-        if (clubId && clubId !== 'all') {
-          url += `&clubId=${clubId}`
+        if (currentClubId && currentClubId !== 'all') {
+          url += `&clubId=${currentClubId}`
         }
       } else {
         // 管理员/全职教练：按俱乐部过滤
-        if (!clubId) { setLoading(false); return }
-        url = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
+        if (!currentClubId) { setLoading(false); return }
+        url = `/api/courses?clubId=${currentClubId === 'all' ? '' : currentClubId}&startDate=${startDate}&endDate=${endDate}`
         if (coachFilter !== 'all') {
           url += `&coachId=${coachFilter}`
         }
@@ -482,29 +476,16 @@ export default function SchedulePage() {
     loadCourses()
   }, [loadCourses])
 
-  // 获取用户角色
-  React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      setRole(user.role || '')
-    }
-  }, [])
-
   React.useEffect(() => {
     loadOptions()
   }, [loadOptions])
 
   // 兼职教练角色自动选中自己
   React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      if ((user.role === 'coach' || user.role === 'part_time_coach') && user.id) {
-        setForm((prev) => ({ ...prev, coachId: String(user.id) }))
-      }
+    if ((role === 'coach' || role === 'part_time_coach') && user?.id) {
+      setForm((prev) => ({ ...prev, coachId: String(user.id) }))
     }
-  }, [])
+  }, [role, user?.id])
 
   // 监听俱乐部切换
   React.useEffect(() => {
@@ -603,9 +584,6 @@ export default function SchedulePage() {
   }
 
   const resetForm = () => {
-    const currentClubId = localStorage.getItem('currentClubId')
-    const stored = localStorage.getItem('user')
-    const user = stored ? JSON.parse(stored) : null
     setForm({
       clubId: currentClubId && currentClubId !== 'all' ? currentClubId : '',
       subjectId: '',

@@ -13,6 +13,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
 
 const titleMap: Record<string, string> = {
   '/schedule': '排课管理',
@@ -36,21 +38,14 @@ interface HeaderProps {
 export function Header({ marginLeft, onMenuClick, isMobile }: HeaderProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const user = useUserStore((s) => s.user)
+  const logout = useUserStore((s) => s.logout)
   const currentTitle = titleMap[pathname] || ''
-  const [userName, setUserName] = React.useState('管理员')
 
-  React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const u = JSON.parse(stored)
-      if (u.name) setUserName(u.name)
-    }
-  }, [])
+  const userName = user?.name || '管理员'
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    localStorage.removeItem('currentClubId')
+    logout()
     router.push('/login')
   }
 
