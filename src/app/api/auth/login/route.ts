@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import crypto from 'crypto'
-
-// 密码哈希函数
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex')
-}
+import { signToken } from '@/lib/jwt'
+import { verifyPassword } from '@/lib/password'
 
 export async function POST(request: NextRequest) {
   const { phone, password } = await request.json()
@@ -25,14 +21,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '账号已被禁用' }, { status: 400 })
   }
 
-  // 验证密码
-  const hashedPassword = hashPassword(password)
-  if (user.passwordHash !== hashedPassword) {
+  // 验证密码（使用 bcrypt）
+  if (!user.passwordHash) {
+    return NextResponse.json({ error: '账号密码异常，请联系管理员' }, { status: 400 })
+  }
+  const isValid = await verifyPassword(password, user.passwordHash)
+  if (!isValid) {
     return NextResponse.json({ error: '密码错误' }, { status: 400 })
   }
 
-  // 生成 token
-  const token = Buffer.from(JSON.stringify({ userId: user.id, phone: user.phone })).toString('base64')
+  // 生成 JWT token
+  const token = signToken({ userId: user.id, phone: user.phone })
 
   // 获取用户的俱乐部信息
   let clubId: number | null = null

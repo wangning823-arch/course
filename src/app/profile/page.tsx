@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { useUserStore } from '@/stores/user-store'
+import { authFetch } from '@/lib/fetch-client'
 
 const roleLabels: Record<string, string> = {
   super_admin: '超级管理员',
@@ -14,6 +16,8 @@ const roleLabels: Record<string, string> = {
 }
 
 export default function ProfilePage() {
+  const storeUser = useUserStore((s) => s.user)
+  const updateUser = useUserStore((s) => s.updateUser)
   const [user, setUser] = React.useState<any>(null)
   const [name, setName] = React.useState('')
   const [phone, setPhone] = React.useState('')
@@ -28,21 +32,19 @@ export default function ProfilePage() {
   const [pwdMsg, setPwdMsg] = React.useState('')
 
   React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const u = JSON.parse(stored)
-      setUser(u)
-      setName(u.name || '')
-      setPhone(u.phone || '')
+    if (storeUser) {
+      setUser(storeUser)
+      setName(storeUser.name || '')
+      setPhone(storeUser.phone || '')
     }
-  }, [])
+  }, [storeUser])
 
   const handleSave = async () => {
     if (!user) return
     setSaving(true)
     setMsg('')
     try {
-      const res = await fetch(`/api/users/${user.id}`, {
+      const res = await authFetch(`/api/users/${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, phone }),
@@ -54,7 +56,7 @@ export default function ProfilePage() {
       }
       const updated = await res.json()
       const newUser = { ...user, name: updated.name, phone: updated.phone }
-      localStorage.setItem('user', JSON.stringify(newUser))
+      updateUser({ name: updated.name, phone: updated.phone })
       setUser(newUser)
       setMsg('保存成功')
     } catch (e) {
@@ -81,7 +83,7 @@ export default function ProfilePage() {
     setChangingPwd(true)
     setPwdMsg('')
     try {
-      const res = await fetch(`/api/users/${user.id}`, {
+      const res = await authFetch(`/api/users/${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ oldPassword, password: newPassword }),

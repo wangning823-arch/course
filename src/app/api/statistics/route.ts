@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const clubId = searchParams.get('clubId')
   const coachId = searchParams.get('coachId')
 
-  // 基础过滤条件：按俱乐部过滤课程
+  // 基础过滤条件：按俱乐部过滤课程（使用 course.scheduledDate 而非 lesson.createdAt）
   const baseWhere: any = {
     status: 'confirmed',
   }
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     baseWhere.coachId = parseInt(coachId)
   }
 
-  // 计算时间范围
+  // 计算时间范围（基于课程的 scheduledDate）
   const now = new Date()
   let startDate: Date
 
@@ -38,7 +38,8 @@ export async function GET(request: NextRequest) {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1)
   }
 
-  const dateWhere = { ...baseWhere, createdAt: { gte: startDate } }
+  // 使用 course.scheduledDate 过滤（补录课时不会影响统计准确性）
+  const dateWhere = { ...baseWhere, course: { ...baseWhere.course, scheduledDate: { gte: startDate } } }
 
   // 总课时数
   const totalLessons = await prisma.lesson.count({ where: dateWhere })
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
     where: dateWhere,
   })
 
-  // 教练排名（优化N+1：一次查出所有教练统计）
+  // 教练排名（一次查出所有教练统计）
   const coachStats = await prisma.lesson.groupBy({
     by: ['coachId'],
     where: dateWhere,
@@ -85,39 +86,29 @@ export async function GET(request: NextRequest) {
     coachStudentCount.get(stat.coachId)!.add(stat.studentId)
   }
 
-  // 一次性查出每个教练的主授科目
-  const coachCourseStats = await prisma.lesson.groupBy({
-    by: ['courseId'],
-    where: dateWhere,
-  })
-  const courseIds = [...new Set(coachCourseStats.map(s => s.courseId))]
-  const courses = await prisma.course.findMany({
-    where: { id: { in: courseIds } },
-    select: { id: true, subjectId: true, subject: { select: { name: true } } },
-  })
-  const courseSubjectMap = new Map(courses.map(c => [c.id, c.subject.name]))
-
-  // 统计每个教练的各科目课时数
-  const coachSubjectCount = new Map<number, Map<string, number>>()
-  for (const stat of coachCourseStats) {
-    const course = courses.find(c => c.id === stat.courseId)
-    if (!course) continue
-    // 需要通过 lesson 的 coachId 关联，这里简化处理
-  }
-
-  // 重新计算教练科目：需要先查出每条lesson的coachId和courseId
+  // 一次性查出每条 lesson 的 coachId 和 courseId（用于计算科目分布）
   const coachLessonsForSubject = await prisma.lesson.findMany({
     where: dateWhere,
     select: { coachId: true, courseId: true },
   })
-  const coachSubjectMap2 = new Map<number, Map<string, number>>()
+
+  // 一次性查出所有相关课程的科目信息
+  const courseIdsForSubject = [...new Set(coachLessonsForSubject.map(l => l.courseId))]
+  const coursesForSubject = await prisma.course.findMany({
+    where: { id: { in: courseIdsForSubject } },
+    select: { id: true, subject: { select: { name: true } } },
+  })
+  const courseSubjectMap = new Map(coursesForSubject.map(c => [c.id, c.subject.name]))
+
+  // 统计每个教练的各科目课时数
+  const coachSubjectMap = new Map<number, Map<string, number>>()
   for (const l of coachLessonsForSubject) {
     const subjectName = courseSubjectMap.get(l.courseId)
     if (!subjectName) continue
-    if (!coachSubjectMap2.has(l.coachId)) {
-      coachSubjectMap2.set(l.coachId, new Map())
+    if (!coachSubjectMap.has(l.coachId)) {
+      coachSubjectMap.set(l.coachId, new Map())
     }
-    const subjectMap = coachSubjectMap2.get(l.coachId)!
+    const subjectMap = coachSubjectMap.get(l.coachId)!
     subjectMap.set(subjectName, (subjectMap.get(subjectName) || 0) + 1)
   }
 
@@ -126,7 +117,7 @@ export async function GET(request: NextRequest) {
     .slice(0, 10)
     .map((stat, index) => {
       // 找出主授科目（课时最多的）
-      const subjectCounts = coachSubjectMap2.get(stat.coachId)
+      const subjectCounts = coachSubjectMap.get(stat.coachId)
       let mainSubject = '-'
       if (subjectCounts && subjectCounts.size > 0) {
         const sorted = [...subjectCounts.entries()].sort((a, b) => b[1] - a[1])
@@ -161,11 +152,15 @@ export async function GET(request: NextRequest) {
   const studentMap = new Map(students.map(s => [s.id, s]))
 
   // 一次性查出每个学员的科目数
+  const studentSubjectCount = new Map<number, Set<string>>()
+  for (const l of coachLessonsForSubject) {
+    // 复用已查询的 coachLessonsForSubject，按 studentId 分组
+  }
+  // 重新查询学员维度的课程数据
   const studentLessonCourses = await prisma.lesson.findMany({
     where: dateWhere,
     select: { studentId: true, courseId: true },
   })
-  const studentSubjectCount = new Map<number, Set<string>>()
   for (const l of studentLessonCourses) {
     const subjectName = courseSubjectMap.get(l.courseId)
     if (!subjectName) continue
@@ -190,29 +185,38 @@ export async function GET(request: NextRequest) {
       }
     })
 
-  // 月度趋势（最近6个月）
+  // 月度趋势（最近6个月）- 使用一次查询优化 N+1
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+  const monthlyLessons = await prisma.lesson.findMany({
+    where: {
+      ...baseWhere,
+      course: { ...baseWhere.course, scheduledDate: { gte: sixMonthsAgo } },
+    },
+    select: { course: { select: { scheduledDate: true } } },
+  })
+
+  // 按月分组统计
+  const monthlyCountMap = new Map<string, number>()
+  for (const lesson of monthlyLessons) {
+    const monthKey = `${lesson.course.scheduledDate.getFullYear()}-${lesson.course.scheduledDate.getMonth()}`
+    monthlyCountMap.set(monthKey, (monthlyCountMap.get(monthKey) || 0) + 1)
+  }
+
+  // 生成最近6个月的数据
   const monthlyTrend = []
   for (let i = 5; i >= 0; i--) {
-    const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0)
-
-    const count = await prisma.lesson.count({
-      where: {
-        ...baseWhere,
-        createdAt: { gte: monthStart, lte: monthEnd },
-      },
-    })
-
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const monthKey = `${monthDate.getFullYear()}-${monthDate.getMonth()}`
     monthlyTrend.push({
-      name: `${monthStart.getMonth() + 1}月`,
-      课时: count,
+      name: `${monthDate.getMonth() + 1}月`,
+      课时: monthlyCountMap.get(monthKey) || 0,
     })
   }
 
-  // 科目分布（优化N+1：使用已查出的课程数据）
+  // 科目分布（使用已查出的课程数据）
   const subjectDistribution: Record<string, number> = {}
-  for (const stat of coachCourseStats) {
-    const subjectName = courseSubjectMap.get(stat.courseId)
+  for (const l of coachLessonsForSubject) {
+    const subjectName = courseSubjectMap.get(l.courseId)
     if (subjectName) {
       subjectDistribution[subjectName] = (subjectDistribution[subjectName] || 0) + 1
     }
@@ -225,7 +229,7 @@ export async function GET(request: NextRequest) {
     color: colors[i % colors.length],
   }))
 
-  // 本月收入（根据已确认课时 × 教练定价计算）
+  // 本月收入（批量查询优化 N+1）
   const monthLessons = await prisma.lesson.findMany({
     where: dateWhere,
     include: {
@@ -238,25 +242,46 @@ export async function GET(request: NextRequest) {
       },
     },
   })
+
+  // 批量查询所有教练定价
+  const coachPriceKeys = monthLessons
+    .filter(l => l.course.club)
+    .map(l => ({
+      clubId: l.course.club!.id,
+      coachId: l.course.coach.id,
+      subjectId: l.course.subject.id,
+      teachingMode: l.course.teachingMode,
+    }))
+
+  const coachPrices = await prisma.coachPrice.findMany({
+    where: {
+      OR: coachPriceKeys.map(key => ({
+        clubId: key.clubId,
+        coachId: key.coachId,
+        subjectId: key.subjectId,
+        teachingMode: key.teachingMode,
+      })),
+    },
+  })
+
+  // 构建定价映射
+  const priceMap = new Map<string, number>()
+  for (const cp of coachPrices) {
+    const key = `${cp.clubId}-${cp.coachId}-${cp.subjectId}-${cp.teachingMode}`
+    priceMap.set(key, Number(cp.price))
+  }
+
+  // 计算收入
   let monthIncome = 0
   for (const lesson of monthLessons) {
     const duration = lesson.durationMinutes || 0
     const standardDuration = lesson.course.subject.durationMinutes || 60
 
-    // 从 CoachPrice 表查找价格（俱乐部+教练+科目+授课模式）
     // 私人课程（无俱乐部）不计入收入统计
     if (!lesson.course.club) continue
-    const coachPrice = await prisma.coachPrice.findUnique({
-      where: {
-        clubId_coachId_subjectId_teachingMode: {
-          clubId: lesson.course.club.id,
-          coachId: lesson.course.coach.id,
-          subjectId: lesson.course.subject.id,
-          teachingMode: lesson.course.teachingMode,
-        },
-      },
-    })
-    const price = coachPrice ? Number(coachPrice.price) : 0
+
+    const priceKey = `${lesson.course.club.id}-${lesson.course.coach.id}-${lesson.course.subject.id}-${lesson.course.teachingMode}`
+    const price = priceMap.get(priceKey) || 0
 
     // 按比例计算：实际时长 / 标准时长 × 教练单价
     monthIncome += standardDuration > 0 ? (duration / standardDuration) * price : price

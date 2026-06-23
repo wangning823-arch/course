@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { verifyToken } from '@/lib/jwt'
 
 export interface AuthUser {
   userId: number
@@ -9,7 +10,7 @@ export interface AuthUser {
 
 /**
  * 从请求头的 Authorization 中解析当前登录用户信息
- * token 格式: base64({ userId, phone })
+ * token 格式: JWT ({ userId, phone })
  * 用户的 role 和 clubId 从数据库查询（更安全）
  */
 export async function getAuthUser(request: NextRequest): Promise<AuthUser | null> {
@@ -18,8 +19,8 @@ export async function getAuthUser(request: NextRequest): Promise<AuthUser | null
 
   try {
     const token = authHeader.replace('Bearer ', '')
-    const payload = JSON.parse(Buffer.from(token, 'base64').toString())
-    if (!payload.userId) return null
+    const payload = verifyToken(token)
+    if (!payload) return null
 
     // 从数据库查 role 和 clubId（不信任客户端）
     const { prisma } = await import('@/lib/prisma')

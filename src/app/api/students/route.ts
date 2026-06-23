@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAuthUser } from '@/lib/auth'
+import { withErrorHandling, withAuth, apiError, apiSuccess } from '@/lib/api-handler'
 
 // GET - 获取学员列表
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandling(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url)
   const search = searchParams.get('search') || ''
   const clubId = searchParams.get('clubId')
   const coachId = searchParams.get('coachId')
 
   if (!clubId && !coachId) {
-    return NextResponse.json({ error: '缺少clubId参数' }, { status: 400 })
+    return apiError('缺少clubId参数', 400)
   }
 
   const searchFilter = search ? {
@@ -106,18 +107,17 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  return NextResponse.json(students)
-}
+  return apiSuccess(students)
+})
 
 // POST - 创建学员
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest, context?: any) => {
   const { name, phone, gender, parentName, parentPhone, remark, clubId, coachId } = await request.json()
+  const { authUser } = context
 
   if (!name) {
-    return NextResponse.json({ error: '请输入学员姓名' }, { status: 400 })
+    return apiError('请输入学员姓名', 400)
   }
-
-  const authUser = await getAuthUser(request)
 
   let finalClubId: number | null = null
   let finalCoachId: number | null = null
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
         where: { userId: authUser.userId, clubId: parseInt(clubId) },
       })
       if (!membership) {
-        return NextResponse.json({ error: '无权在该俱乐部创建学员' }, { status: 403 })
+        return apiError('无权在该俱乐部创建学员', 403)
       }
       finalClubId = parseInt(clubId)
       finalCoachId = coachId ? parseInt(coachId) : null
@@ -141,13 +141,13 @@ export async function POST(request: NextRequest) {
   } else if (authUser?.role === 'club_admin' || authUser?.role === 'full_time_coach') {
     // 管理员/全职教练创建的学员必须属于自己的俱乐部
     if (!clubId) {
-      return NextResponse.json({ error: '请选择俱乐部' }, { status: 400 })
+      return apiError('请选择俱乐部', 400)
     }
     finalClubId = authUser.clubId ? authUser.clubId : parseInt(clubId)
     finalCoachId = coachId ? parseInt(coachId) : null
   } else {
     if (!clubId) {
-      return NextResponse.json({ error: '请选择俱乐部' }, { status: 400 })
+      return apiError('请选择俱乐部', 400)
     }
     finalClubId = parseInt(clubId)
     finalCoachId = coachId ? parseInt(coachId) : null
@@ -166,5 +166,5 @@ export async function POST(request: NextRequest) {
     },
   })
 
-  return NextResponse.json(student)
-}
+  return apiSuccess(student, 201)
+})

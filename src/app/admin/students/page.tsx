@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { ClubSelector } from '@/components/club-selector'
 import { authFetch } from '@/lib/fetch-client'
+import { useDebounce } from '@/hooks/use-debounce'
 
 interface Coach { id: number; name: string }
 interface Club { id: number; name: string }
@@ -19,6 +20,7 @@ export default function StudentsPage() {
   const [students, setStudents] = React.useState<any[]>([])
   const [loading, setLoading] = React.useState(true)
   const [search, setSearch] = React.useState('')
+  const debouncedSearch = useDebounce(search, 300)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ name: '', phone: '', gender: '1', parentName: '', parentPhone: '' })
   const [editId, setEditId] = React.useState<number | null>(null)
@@ -45,7 +47,7 @@ export default function StudentsPage() {
       const user = stored ? JSON.parse(stored) : null
       const clubId = localStorage.getItem('currentClubId') || user?.clubId
 
-      let url = `/api/students?search=${search}`
+      let url = `/api/students?search=${debouncedSearch}`
       // 教练：默认看所有俱乐部学员，选择具体俱乐部时按俱乐部过滤
       if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
         url += `&coachId=${user.id}`
@@ -72,7 +74,7 @@ export default function StudentsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search])
+  }, [debouncedSearch])
 
   // 加载教练列表（管理员用）
   const fetchCoaches = React.useCallback(async () => {

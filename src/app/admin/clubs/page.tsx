@@ -8,41 +8,29 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { useApi, usePostApi, usePutApi, useDeleteApi, mutate } from '@/hooks/use-api'
+import { authFetch } from '@/lib/fetch-client'
 
 export default function ClubsPage() {
-  const [clubs, setClubs] = React.useState<any[]>([])
-  const [loading, setLoading] = React.useState(true)
+  const { data: clubs, isLoading, error } = useApi<any[]>('/api/clubs')
+  const { trigger: createClub } = usePostApi('/api/clubs')
+  const { trigger: updateClub } = usePutApi('/api/clubs')
+  const { trigger: deleteClub } = useDeleteApi('/api/clubs')
+
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ name: '', address: '', phone: '', description: '' })
   const [editId, setEditId] = React.useState<number | null>(null)
 
-  const fetchClubs = async () => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/clubs')
-      const data = await res.json()
-      setClubs(data)
-    } catch (error) {
-      console.error('获取俱乐部失败:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  React.useEffect(() => {
-    fetchClubs()
-  }, [])
-
   const handleSubmit = async () => {
     try {
       if (editId) {
-        await fetch(`/api/clubs/${editId}`, {
+        await authFetch(`/api/clubs/${editId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         })
       } else {
-        await fetch('/api/clubs', {
+        await authFetch('/api/clubs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
@@ -51,7 +39,7 @@ export default function ClubsPage() {
       setDialogOpen(false)
       setFormData({ name: '', address: '', phone: '', description: '' })
       setEditId(null)
-      fetchClubs()
+      mutate('/api/clubs')
     } catch (error) {
       console.error('操作失败:', error)
     }
@@ -60,8 +48,8 @@ export default function ClubsPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除该俱乐部吗？')) return
     try {
-      await fetch(`/api/clubs/${id}`, { method: 'DELETE' })
-      fetchClubs()
+      await authFetch(`/api/clubs/${id}`, { method: 'DELETE' })
+      mutate('/api/clubs')
     } catch (error) {
       console.error('删除失败:', error)
     }
@@ -78,7 +66,7 @@ export default function ClubsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">俱乐部管理</h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchClubs}>
+          <Button variant="outline" onClick={() => mutate('/api/clubs')}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新
           </Button>
@@ -122,9 +110,9 @@ export default function ClubsPage() {
 
       <Card>
         <CardContent className="p-0">
-          {loading ? (
+          {isLoading ? (
             <div className="p-8 text-center text-gray-500">加载中...</div>
-          ) : clubs.length === 0 ? (
+          ) : !clubs || clubs.length === 0 ? (
             <div className="p-8 text-center text-gray-500">暂无数据</div>
           ) : (
             <Table>

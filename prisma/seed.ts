@@ -1,16 +1,16 @@
 import { PrismaClient } from '@prisma/client'
-import crypto from 'crypto'
+import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex')
+async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 10)
 }
 
 async function main() {
   console.log('开始填充数据库...')
 
-  const defaultPassword = hashPassword('123456')
+  const defaultPassword = await hashPassword('123456')
 
   // 创建系统管理员
   const admin = await prisma.user.create({

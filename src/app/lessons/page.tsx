@@ -12,45 +12,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClubSelector } from '@/components/club-selector'
 import { authFetch } from '@/lib/fetch-client'
+import { useDebounce } from '@/hooks/use-debounce'
+import { Lesson, Course, Student, Coach, Subject, Club, LessonStatus } from '@/types/api'
 
-const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' }> = {
+const statusMap: Record<LessonStatus, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' }> = {
   pending: { label: '待确认', variant: 'warning' },
   confirmed: { label: '已确认', variant: 'success' },
   cancelled: { label: '已取消', variant: 'destructive' },
 }
 
-interface LessonData {
-  id: number
-  date: string
-  subject: string
-  coach: string
-  student: string
-  campus: string
-  duration: number
-  content: string
-  performance: string
-  status: string
-  courseId: number
-}
-
-interface CourseOption {
-  id: number
-  subjectId: number
-  subject: string
-  coachId: number
-  coach: string
-  date: string
-  startTime: string
-  endTime: string
-  students: string
-  studentIds: number[]
-  status: string
-}
-
-interface Student { id: number; name: string }
-interface Coach { id: number; name: string }
-interface Subject { id: number; name: string; clubId: number | null; coachId?: number | null }
-interface Club { id: number; name: string }
+type LessonData = Lesson
+type CourseOption = Course & { students: string; studentIds: number[] }
 
 export default function LessonsPage() {
   const searchParams = useSearchParams()
@@ -58,6 +30,7 @@ export default function LessonsPage() {
   const [lessons, setLessons] = React.useState<LessonData[]>([])
   const [loading, setLoading] = React.useState(false)
   const [search, setSearch] = React.useState('')
+  const debouncedSearch = useDebounce(search, 300)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
@@ -139,13 +112,13 @@ export default function LessonsPage() {
       // 过滤掉过去的课程，并合并相同课程
       const today = new Date()
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-      const futureCourses = courseData.filter((c: CourseOption) => c.date >= todayStr && c.status !== 'completed')
+      const futureCourses = courseData.filter((c: CourseOption) => c.scheduledDate >= todayStr && c.status !== 'completed')
 
       // 按科目+教练+日期+时间+学员去重
       const courseMap = new Map<string, CourseOption>()
       for (const c of futureCourses) {
         const sortedStudentIds = [...c.studentIds].sort((a, b) => a - b).join(',')
-        const key = `${c.subjectId}-${c.coachId}-${c.date}-${c.startTime}-${c.endTime}-${sortedStudentIds}`
+        const key = `${c.subjectId}-${c.coachId}-${c.scheduledDate}-${c.startTime}-${c.endTime}-${sortedStudentIds}`
         if (!courseMap.has(key)) {
           courseMap.set(key, c)
         }
@@ -196,7 +169,7 @@ export default function LessonsPage() {
         setSubjects([])
         return
       }
-      const res = await fetch(url)
+      const res = await authFetch(url)
       if (res.ok) {
         const data = await res.json()
         setSubjects(data)
@@ -222,7 +195,7 @@ export default function LessonsPage() {
         // 管理员/全职教练：按俱乐部过滤
         url = `/api/students?clubId=${selectedClubId}`
       }
-      const res = await fetch(url)
+      const res = await authFetch(url)
       if (res.ok) {
         const data = await res.json()
         setStudents(data)
@@ -261,8 +234,8 @@ export default function LessonsPage() {
         params += `&timeRange=${timeRange}`
       }
 
-      if (search) params += `&search=${encodeURIComponent(search)}`
-      const res = await fetch(`/api/lessons?${params}`)
+      if (debouncedSearch) params += `&search=${encodeURIComponent(debouncedSearch)}`
+      const res = await authFetch(`/api/lessons?${params}`)
       const data = await res.json()
       setLessons(data)
       setCurrentPage(1) // 重新加载时重置到第一页
@@ -271,7 +244,7 @@ export default function LessonsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, timeRange, courseIdFromUrl])
+  }, [debouncedSearch, timeRange, courseIdFromUrl])
 
   React.useEffect(() => {
     loadLessons()
@@ -306,7 +279,7 @@ export default function LessonsPage() {
       }
     }
     try {
-      const res = await fetch('/api/lessons', {
+      const res = await authFetch('/api/lessons', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -341,7 +314,7 @@ export default function LessonsPage() {
   const handleEdit = async () => {
     if (!selectedLesson) return
     try {
-      const res = await fetch(`/api/lessons/${selectedLesson.id}`, {
+      const res = await authFetch(`/api/lessons/${selectedLesson.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm),
@@ -363,7 +336,7 @@ export default function LessonsPage() {
     const stored = localStorage.getItem('user')
     const user = stored ? JSON.parse(stored) : null
     try {
-      await fetch(`/api/lessons/${lesson.id}`, {
+      await authFetch(`/api/lessons/${lesson.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'confirmed', confirmedById: user?.id || 1 }),
@@ -378,7 +351,7 @@ export default function LessonsPage() {
   const handleDelete = async () => {
     if (!selectedLesson) return
     try {
-      await fetch(`/api/lessons/${selectedLesson.id}`, { method: 'DELETE' })
+      await authFetch(`/api/lessons/${selectedLesson.id}`, { method: 'DELETE' })
       setDeleteDialogOpen(false)
       setSelectedLesson(null)
       loadLessons()
@@ -417,9 +390,9 @@ export default function LessonsPage() {
 
   const filtered = lessons.filter(
     (l) =>
-      l.subject?.includes(search) ||
-      l.coach?.includes(search) ||
-      l.student?.includes(search)
+      l.subject?.includes(debouncedSearch) ||
+      l.coach?.includes(debouncedSearch) ||
+      l.student?.includes(debouncedSearch)
   )
 
   // 先按状态排序（未确认在前），再按日期时间逆序
@@ -498,7 +471,7 @@ export default function LessonsPage() {
                       courseId: v,
                       clubId: courseSubject?.clubId ? String(courseSubject.clubId) : '',
                       subjectId: String(course.subjectId),
-                      scheduledDate: course.date,
+                      scheduledDate: course.scheduledDate,
                       coachId: String(course.coachId),
                       // 一对一课程自动选中学员；多人课程清空让教练手动选择
                       studentId: course.studentIds.length === 1 ? String(course.studentIds[0]) : '',
@@ -511,7 +484,7 @@ export default function LessonsPage() {
                   <SelectContent>
                     {courses.map((c) => (
                       <SelectItem key={c.id} value={String(c.id)}>
-                        {c.subject} - {c.coach} - {c.date} {c.startTime}
+                        {c.subject} - {c.coach} - {c.scheduledDate} {c.startTime}
                       </SelectItem>
                     ))}
                   </SelectContent>

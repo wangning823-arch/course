@@ -1,8 +1,11 @@
 /**
- * 带鉴权的 fetch 封装，自动从 localStorage 读取 token 并添加 Authorization 头
+ * 带鉴权的 fetch 封装，自动从 Zustand store 读取 token 并添加 Authorization 头
  */
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = localStorage.getItem('token')
+  // 动态导入避免 SSR 问题
+  const { useUserStore } = await import('@/stores/user-store')
+  const token = useUserStore.getState().token
+
   const headers: Record<string, string> = {}
 
   // 复制原有 headers

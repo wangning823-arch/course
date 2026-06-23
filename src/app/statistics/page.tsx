@@ -6,65 +6,39 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { ClubSelector } from '@/components/club-selector'
+import { useFetch } from '@/hooks/use-fetch'
+import { useClubStore } from '@/stores/club-store'
+import { useUserStore } from '@/stores/user-store'
+import { StatisticsData, CoachRankingItem, StudentRankingItem, MonthlyTrendItem, SubjectDataItem } from '@/types/api'
+
+type StatsData = StatisticsData & { monthIncome?: number }
 
 export default function StatisticsPage() {
   const [period, setPeriod] = React.useState('month')
-  const [stats, setStats] = React.useState({
-    totalLessons: 0,
-    totalHours: 0,
-    activeStudents: 0,
-    monthIncome: 0,
-    coachRanking: [] as any[],
-    studentRanking: [] as any[],
-    monthlyTrend: [] as any[],
-    subjectData: [] as any[],
-  })
-  const [loading, setLoading] = React.useState(true)
+  const user = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
 
-  const fetchStats = React.useCallback(async () => {
-    const clubId = localStorage.getItem('currentClubId')
+  // 构建 API URL
+  const buildUrl = React.useCallback(() => {
+    let url = `/api/statistics?period=${period}`
 
-    // 获取当前用户信息
-    const stored = localStorage.getItem('user')
-    const user = stored ? JSON.parse(stored) : null
-
-    setLoading(true)
-    try {
-      let url = `/api/statistics?period=${period}`
-
-      // 教练：默认看自己所有俱乐部的统计，选择具体俱乐部时按俱乐部过滤
-      if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
-        url += `&coachId=${user.id}`
-        if (clubId && clubId !== 'all') {
-          url += `&clubId=${clubId}`
-        }
-      } else {
-        // 管理员/全职教练：选择具体俱乐部时按俱乐部过滤，'all'时不过滤
-        if (clubId && clubId !== 'all') {
-          url += `&clubId=${clubId}`
-        }
+    if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
+      url += `&coachId=${user.id}`
+      if (currentClubId && currentClubId !== 'all') {
+        url += `&clubId=${currentClubId}`
       }
-
-      const res = await fetch(url)
-      const data = await res.json()
-      setStats(data)
-    } catch (error) {
-      console.error('获取统计数据失败:', error)
-    } finally {
-      setLoading(false)
+    } else {
+      if (currentClubId && currentClubId !== 'all') {
+        url += `&clubId=${currentClubId}`
+      }
     }
-  }, [period])
 
-  React.useEffect(() => {
-    fetchStats()
-  }, [fetchStats])
+    return url
+  }, [period, user, currentClubId])
 
-  // 监听俱乐部切换
-  React.useEffect(() => {
-    const handleClubChanged = () => fetchStats()
-    window.addEventListener('clubChanged', handleClubChanged)
-    return () => window.removeEventListener('clubChanged', handleClubChanged)
-  }, [fetchStats])
+  const { data: stats, isLoading: loading } = useFetch<StatsData>(buildUrl(), {
+    revalidateOnFocus: true,
+  })
 
   return (
     <div className="space-y-6">
@@ -95,31 +69,31 @@ export default function StatisticsPage() {
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-gray-500">总课时</p>
-                <p className="text-3xl font-bold text-blue-500 mt-1">{stats.totalLessons}</p>
+                <p className="text-3xl font-bold text-blue-500 mt-1">{stats?.totalLessons || 0}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-gray-500">总时长</p>
-                <p className="text-3xl font-bold text-green-500 mt-1">{stats.totalHours}h</p>
+                <p className="text-3xl font-bold text-green-500 mt-1">{stats?.totalHours || 0}h</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-gray-500">活跃学员</p>
-                <p className="text-3xl font-bold text-yellow-500 mt-1">{stats.activeStudents}</p>
+                <p className="text-3xl font-bold text-yellow-500 mt-1">{stats?.activeStudents || 0}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-gray-500">教练数量</p>
-                <p className="text-3xl font-bold text-red-500 mt-1">{stats.coachRanking.length}</p>
+                <p className="text-3xl font-bold text-red-500 mt-1">{stats?.coachRanking?.length || 0}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-gray-500">课时收入</p>
-                <p className="text-3xl font-bold text-purple-500 mt-1">¥{stats.monthIncome.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-purple-500 mt-1">¥{(stats?.monthIncome || 0).toLocaleString()}</p>
               </CardContent>
             </Card>
           </div>
@@ -131,7 +105,7 @@ export default function StatisticsPage() {
                 <CardTitle>月度课时趋势</CardTitle>
               </CardHeader>
               <CardContent>
-                {stats.monthlyTrend.length === 0 ? (
+                {(!stats?.monthlyTrend || stats?.monthlyTrend.length === 0) ? (
                   <div className="p-8 text-center text-gray-500">暂无数据</div>
                 ) : (
                   <ResponsiveContainer width="100%" height={300}>
@@ -153,13 +127,13 @@ export default function StatisticsPage() {
                 <CardTitle>科目分布</CardTitle>
               </CardHeader>
               <CardContent>
-                {stats.subjectData.length === 0 ? (
+                {(!stats?.subjectData || stats.subjectData.length === 0) ? (
                   <div className="p-8 text-center text-gray-500">暂无数据</div>
                 ) : (
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie data={stats.subjectData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
-                        {stats.subjectData.map((entry: any, index: number) => (
+                        {stats.subjectData.map((entry: SubjectDataItem & { color?: string }, index: number) => (
                           <Cell key={index} fill={entry.color} />
                         ))}
                       </Pie>
@@ -178,7 +152,7 @@ export default function StatisticsPage() {
               <CardTitle>教练排名</CardTitle>
             </CardHeader>
             <CardContent>
-              {stats.coachRanking.length === 0 ? (
+              {!stats?.coachRanking || stats.coachRanking.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">暂无数据</div>
               ) : (
                 <Table>
@@ -193,7 +167,7 @@ export default function StatisticsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {stats.coachRanking.map((coach: any) => (
+                    {stats.coachRanking.map((coach: CoachRankingItem & { rank?: number; students?: number; mainSubject?: string }) => (
                       <TableRow key={coach.rank}>
                         <TableCell>
                           <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white ${
@@ -221,7 +195,7 @@ export default function StatisticsPage() {
               <CardTitle>学员排名</CardTitle>
             </CardHeader>
             <CardContent>
-              {stats.studentRanking.length === 0 ? (
+              {!stats?.studentRanking || stats.studentRanking.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">暂无数据</div>
               ) : (
                 <Table>
@@ -236,7 +210,7 @@ export default function StatisticsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {stats.studentRanking.map((student: any) => (
+                    {stats.studentRanking.map((student: StudentRankingItem & { rank?: number; subjects?: number; coachName?: string }) => (
                       <TableRow key={student.rank}>
                         <TableCell>
                           <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white ${

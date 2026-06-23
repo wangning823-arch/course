@@ -4,6 +4,10 @@ import * as React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
+import { useUserStore, waitForHydration } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
+import { authFetch } from '@/lib/fetch-client'
+import { Toaster } from 'sonner'
 import './globals.css'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -13,6 +17,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const [isMobile, setIsMobile] = React.useState(false)
   const [mounted, setMounted] = React.useState(false)
   const [authChecked, setAuthChecked] = React.useState(false)
+  const [hydrated, setHydrated] = React.useState(false)
+
+  const token = useUserStore((s) => s.token)
+  const user = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
 
   const isLoginPage = pathname === '/login'
 
@@ -22,23 +31,31 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // 系统管理员不允许访问的页面（业务操作和俱乐部管理）
   const superAdminBlockedPaths = ['/schedule', '/lessons', '/admin/campuses', '/admin/subjects', '/admin/coach-prices', '/feedback']
 
+  // 等待 Zustand persist hydration 完成
+  React.useEffect(() => {
+    // 使用 Zustand 的 onRehydrateStorage 回调来检测 hydration 完成
+    waitForHydration().then(() => {
+      setHydrated(true)
+    })
+  }, [])
+
   // 检查登录状态 + 设置页面标题
   React.useEffect(() => {
+    // 等待 hydration 完成后再检查认证状态
+    if (!hydrated) return
+
     if (isLoginPage) {
       document.title = '课时管理系统 - 登录'
       setAuthChecked(true)
       return
     }
-    const token = localStorage.getItem('token')
+
     if (!token) {
       router.replace('/login')
     } else {
       setAuthChecked(true)
-      // 根据用户角色设置标题
-      const stored = localStorage.getItem('user')
-      if (stored) {
-        const user = JSON.parse(stored)
 
+      if (user) {
         // 教练不允许访问管理页面，重定向到首页
         if ((user.role === 'coach' || user.role === 'part_time_coach' || user.role === 'full_time_coach') && coachBlockedPaths.some(p => pathname.startsWith(p))) {
           router.replace('/')
@@ -55,9 +72,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           document.title = '课时管理系统'
         } else {
           // 俱乐部管理员或教练：获取所属俱乐部名称
-          const clubId = user.clubId || localStorage.getItem('currentClubId')
+          const clubId = user.clubId || currentClubId
           if (clubId) {
-            fetch(`/api/clubs/${clubId}`)
+            authFetch(`/api/clubs/${clubId}`)
               .then((res) => res.json())
               .then((club) => {
                 document.title = club?.name ? `${club.name}课时管理系统` : '课时管理系统'
@@ -71,7 +88,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }
       }
     }
-  }, [isLoginPage, router, pathname])
+  }, [hydrated, isLoginPage, router, pathname, token, user, currentClubId])
 
   React.useEffect(() => {
     setMounted(true)
@@ -131,6 +148,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           <div className="p-4 sm:p-6">{children}</div>
         </main>
+        <Toaster position="top-center" richColors />
       </body>
     </html>
   )

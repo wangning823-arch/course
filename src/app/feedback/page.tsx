@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { MessageSquare, Send, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { showSuccess, showError } from '@/lib/toast'
+import { authFetch } from '@/lib/fetch-client'
 
 const categoryOptions = [
   { value: 'feature', label: '功能建议' },
@@ -51,10 +53,7 @@ export default function FeedbackPage() {
   const fetchFeedbacks = React.useCallback(async () => {
     setFetchLoading(true)
     try {
-      const token = localStorage.getItem('token')
-      const res = await fetch('/api/feedback', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await authFetch('/api/feedback')
       if (res.ok) {
         const data = await res.json()
         setFeedbacks(data.data || [])
@@ -75,36 +74,32 @@ export default function FeedbackPage() {
     e.preventDefault()
 
     if (!formData.title.trim()) {
-      alert('请填写标题')
+      showError('请填写标题')
       return
     }
     if (!formData.content.trim()) {
-      alert('请填写详细描述')
+      showError('请填写详细描述')
       return
     }
 
     setLoading(true)
     try {
-      const token = localStorage.getItem('token')
-      const res = await fetch('/api/feedback', {
+      const res = await authFetch('/api/feedback', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       })
 
       if (res.ok) {
-        alert('反馈提交成功')
+        showSuccess('反馈提交成功')
         setFormData({ category: 'feature', title: '', content: '' })
         fetchFeedbacks()
       } else {
         const data = await res.json()
-        alert(data.error || '提交失败')
+        showError(data.error || '提交失败')
       }
     } catch (error) {
-      alert('网络错误')
+      showError('网络错误')
     } finally {
       setLoading(false)
     }

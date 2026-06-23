@@ -10,103 +10,51 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClubSelector } from '@/components/club-selector'
 import { authFetch } from '@/lib/fetch-client'
+import { useApi, mutate } from '@/hooks/use-api'
+import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
 
 export default function SubjectsPage() {
-  const [subjects, setSubjects] = React.useState<any[]>([])
-  const [clubs, setClubs] = React.useState<any[]>([])
-  const [loading, setLoading] = React.useState(true)
+  const user = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
+
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({
     clubId: '', name: '', category: '球类', durationMinutes: '60',
   })
   const [editId, setEditId] = React.useState<number | null>(null)
-  const [role, setRole] = React.useState('')
-  const [userId, setUserId] = React.useState<number | null>(null)
-  const [userClubId, setUserClubId] = React.useState('')
 
-  React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      setRole(user.role || '')
-      setUserId(user.id || null)
-      if (user.clubId) setUserClubId(String(user.clubId))
-    }
-  }, [])
-
+  const role = user?.role || ''
+  const userId = user?.id
+  const userClubId = user?.clubId ? String(user.clubId) : ''
   const isClubAdmin = role === 'club_admin'
   const isPartTimeCoach = role === 'coach' || role === 'part_time_coach'
 
-  const fetchSubjects = React.useCallback(async (currentRole?: string, currentUserId?: number | null) => {
-    setLoading(true)
-    try {
-      const roleToUse = currentRole || role
-      const userIdToUse = currentUserId !== undefined ? currentUserId : userId
-      let url: string
-      if ((roleToUse === 'coach' || roleToUse === 'part_time_coach') && userIdToUse) {
-        // 教练只看私人科目
-        url = `/api/subjects?clubId=private&coachId=${userIdToUse}`
-      } else {
-        const clubId = roleToUse === 'club_admin' ? userClubId : localStorage.getItem('currentClubId')
-        url = clubId && clubId !== 'all'
-          ? `/api/subjects?clubId=${clubId}`
-          : '/api/subjects'
-      }
-      const res = await authFetch(url)
-      const data = await res.json()
-      setSubjects(data)
-    } catch (error) {
-      console.error('获取科目失败:', error)
-    } finally {
-      setLoading(false)
+  // 构建科目 API URL
+  const subjectsUrl = React.useMemo(() => {
+    if ((role === 'coach' || role === 'part_time_coach') && userId) {
+      return `/api/subjects?clubId=private&coachId=${userId}`
     }
-  }, [role, userId, userClubId])
+    if (currentClubId && currentClubId !== 'all') {
+      return `/api/subjects?clubId=${currentClubId}`
+    }
+    return '/api/subjects'
+  }, [role, userId, currentClubId])
 
-  const fetchClubs = async () => {
-    try {
-      // 俱乐部管理员只需要自己的俱乐部
-      if (isClubAdmin && userClubId) {
-        const res = await authFetch(`/api/clubs/${userClubId}`)
-        const data = await res.json()
-        if (data) setClubs([data])
-        return
-      }
-      const res = await authFetch('/api/clubs')
-      const data = await res.json()
-      setClubs(data)
-    } catch (error) {
-      console.error('获取俱乐部失败:', error)
-    }
-  }
+  const { data: subjects, isLoading: loading } = useApi<any[]>(subjectsUrl)
+
+  // 俱乐部列表
+  const clubsUrl = isClubAdmin && userClubId ? `/api/clubs/${userClubId}` : '/api/clubs'
+  const { data: clubsData } = useApi<any>(clubsUrl)
+  const clubs = React.useMemo(() => {
+    if (isClubAdmin && userClubId && clubsData) return [clubsData]
+    if (Array.isArray(clubsData)) return clubsData
+    return []
+  }, [clubsData, isClubAdmin, userClubId])
 
   React.useEffect(() => {
-    if (isClubAdmin && !userClubId) return
-    // 确保使用最新的 role 和 userId 调用
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      fetchSubjects(user.role, user.id)
-    } else {
-      fetchSubjects()
-    }
-    fetchClubs()
-  }, [isClubAdmin, userClubId, role, userId, isPartTimeCoach, fetchSubjects])
-
-  // 监听俱乐部切换
-  React.useEffect(() => {
-    const handleClubChanged = () => {
-      // 使用 localStorage 中的最新用户数据
-      const stored = localStorage.getItem('user')
-      if (stored) {
-        const user = JSON.parse(stored)
-        fetchSubjects(user.role, user.id)
-      } else {
-        fetchSubjects()
-      }
-    }
-    window.addEventListener('clubChanged', handleClubChanged)
-    return () => window.removeEventListener('clubChanged', handleClubChanged)
-  }, [fetchSubjects])
+    // SWR 自动加载数据
+  }, [])
 
   const handleSubmit = async () => {
     try {
@@ -140,7 +88,7 @@ export default function SubjectsPage() {
       setDialogOpen(false)
       setFormData({ clubId: '', name: '', category: '球类', durationMinutes: '60' })
       setEditId(null)
-      fetchSubjects()
+      mutate(subjectsUrl)
     } catch (error) {
       console.error('操作失败:', error)
     }
@@ -150,7 +98,7 @@ export default function SubjectsPage() {
     if (!confirm('确定要删除该科目吗？')) return
     try {
       await authFetch(`/api/subjects/${id}`, { method: 'DELETE' })
-      fetchSubjects()
+      mutate(subjectsUrl)
     } catch (error) {
       console.error('删除失败:', error)
     }
@@ -176,15 +124,7 @@ export default function SubjectsPage() {
           {isPartTimeCoach && (
             <span className="text-sm text-gray-500">私人科目</span>
           )}
-          <Button variant="outline" onClick={() => {
-            const stored = localStorage.getItem('user')
-            if (stored) {
-              const user = JSON.parse(stored)
-              fetchSubjects(user.role, user.id)
-            } else {
-              fetchSubjects()
-            }
-          }}>
+          <Button variant="outline" onClick={() => mutate(subjectsUrl)}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新
           </Button>
@@ -261,7 +201,7 @@ export default function SubjectsPage() {
         <CardContent className="p-0">
           {loading ? (
             <div className="p-8 text-center text-gray-500">加载中...</div>
-          ) : subjects.length === 0 ? (
+          ) : !subjects || subjects.length === 0 ? (
             <div className="p-8 text-center text-gray-500">暂无数据</div>
           ) : (
             <Table>

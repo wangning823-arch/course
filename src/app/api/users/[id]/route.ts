@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAuthUser } from '@/lib/auth'
-import crypto from 'crypto'
-
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex')
-}
+import { hashPassword, verifyPassword } from '@/lib/password'
 
 // PUT - 更新用户
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -77,12 +73,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (!user) {
         return NextResponse.json({ error: '用户不存在' }, { status: 404 })
       }
-      const hashedOld = hashPassword(oldPassword)
-      if (user.passwordHash !== hashedOld) {
+      if (!user.passwordHash) {
+        return NextResponse.json({ error: '用户未设置密码' }, { status: 400 })
+      }
+      const isValid = await verifyPassword(oldPassword, user.passwordHash)
+      if (!isValid) {
         return NextResponse.json({ error: '原密码错误' }, { status: 400 })
       }
     }
-    updateData.passwordHash = hashPassword(password)
+    updateData.passwordHash = await hashPassword(password)
   }
 
   const user = await prisma.user.update({

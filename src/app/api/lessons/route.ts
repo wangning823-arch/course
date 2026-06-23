@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { withErrorHandling, apiError, apiSuccess } from '@/lib/api-handler'
 
 // GET - 获取课时记录列表
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandling(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url)
   const search = searchParams.get('search') || ''
   const startDate = searchParams.get('startDate')
@@ -110,16 +111,16 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  return NextResponse.json(data)
-}
+  return apiSuccess(data)
+})
 
 // POST - 创建课时记录
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandling(async (request: NextRequest) => {
   let body: any
   try {
     body = await request.json()
   } catch {
-    return NextResponse.json({ error: '请求格式错误' }, { status: 400 })
+    return apiError('请求格式错误', 400)
   }
   const {
     courseId, clubId, subjectId, scheduledDate, studentId, coachId,
@@ -130,80 +131,89 @@ export async function POST(request: NextRequest) {
   // 验证：选择课程时只需学员和教练；不选课程时需要俱乐部、科目、日期、学员和教练
   if (courseId) {
     if (!studentId || !coachId) {
-      return NextResponse.json({ error: '请填写学员和教练' }, { status: 400 })
+      return apiError('请填写学员和教练', 400)
+    }
+
+    // 验证学生是否属于该课程
+    const courseStudent = await prisma.courseStudent.findUnique({
+      where: {
+        courseId_studentId: {
+          courseId: parseInt(courseId),
+          studentId: parseInt(studentId),
+        },
+      },
+    })
+
+    if (!courseStudent) {
+      return apiError('该学员不在此课程中', 400)
     }
   } else {
     if (!subjectId || !scheduledDate || !studentId || !coachId) {
-      return NextResponse.json({ error: '请填写科目、日期、学员和教练' }, { status: 400 })
+      return apiError('请填写科目、日期、学员和教练', 400)
     }
   }
 
   let finalCourseId = courseId ? parseInt(courseId) : null
 
-  try {
-    // 解析日期字符串，存储为UTC午夜（避免时区偏移导致日期变化）
-    const parseLocalDate = (dateStr: string) => {
-      const [year, month, day] = dateStr.split('-').map(Number)
-      return new Date(Date.UTC(year, month - 1, day))
-    }
+  // 解析日期字符串，存储为UTC午夜（避免时区偏移导致日期变化）
+  const parseLocalDate = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('-').map(Number)
+    return new Date(Date.UTC(year, month - 1, day))
+  }
 
-    // 如果没有选择课程，自动创建一个临时课程
-    if (!finalCourseId && subjectId && scheduledDate && coachId) {
-      // 获取科目信息以确定默认时长和俱乐部
-      const subject = await prisma.subject.findUnique({
-        where: { id: parseInt(subjectId) },
-        select: { clubId: true, coachId: true, durationMinutes: true },
-      })
-
-      if (!subject) {
-        return NextResponse.json({ error: '科目不存在' }, { status: 400 })
-      }
-
-      // 确定俱乐部ID：优先使用传入的clubId，其次用科目的clubId
-      const finalClubId = clubId !== undefined && clubId !== null && clubId !== '' ? parseInt(clubId) : subject.clubId
-
-      const duration = durationMinutes ? parseInt(durationMinutes) : subject.durationMinutes || 60
-      const startParts = (actualStart || '09:00').split(':')
-      const startMinutes = parseInt(startParts[0]) * 60 + parseInt(startParts[1] || '0')
-      const endMinutes = startMinutes + duration
-      const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`
-
-      const course = await prisma.course.create({
-        data: {
-          clubId: finalClubId,
-          subjectId: parseInt(subjectId),
-          coachId: parseInt(coachId),
-          teachingMode: 'private',
-          scheduledDate: parseLocalDate(scheduledDate),
-          startTime: actualStart || '09:00',
-          endTime: endTime,
-          status: 'completed',
-          createdBy: parseInt(coachId),
-        },
-      })
-      finalCourseId = course.id
-    }
-
-    const lessonDate = scheduledDate || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
-
-    const lesson = await prisma.lesson.create({
-      data: {
-        courseId: finalCourseId!,
-        studentId: parseInt(studentId),
-        coachId: parseInt(coachId),
-        actualStart: actualStart ? new Date(`${lessonDate}T${actualStart}`) : null,
-        actualEnd: actualEnd ? new Date(`${lessonDate}T${actualEnd}`) : null,
-        durationMinutes: durationMinutes ? parseInt(durationMinutes) : null,
-        content,
-        performance,
-        homework,
-        status: 'pending',
-      },
+  // 如果没有选择课程，自动创建一个临时课程
+  if (!finalCourseId && subjectId && scheduledDate && coachId) {
+    // 获取科目信息以确定默认时长和俱乐部
+    const subject = await prisma.subject.findUnique({
+      where: { id: parseInt(subjectId) },
+      select: { clubId: true, coachId: true, durationMinutes: true },
     })
 
-    return NextResponse.json(lesson)
-  } catch (e: any) {
-    console.error('[lessons POST] error:', e.message)
-    return NextResponse.json({ error: e.message || '创建失败' }, { status: 500 })
+    if (!subject) {
+      return apiError('科目不存在', 404)
+    }
+
+    // 确定俱乐部ID：优先使用传入的clubId，其次用科目的clubId
+    const finalClubId = clubId !== undefined && clubId !== null && clubId !== '' ? parseInt(clubId) : subject.clubId
+
+    const duration = durationMinutes ? parseInt(durationMinutes) : subject.durationMinutes || 60
+    const startParts = (actualStart || '09:00').split(':')
+    const startMinutes = parseInt(startParts[0]) * 60 + parseInt(startParts[1] || '0')
+    const endMinutes = startMinutes + duration
+    const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`
+
+    const course = await prisma.course.create({
+      data: {
+        clubId: finalClubId,
+        subjectId: parseInt(subjectId),
+        coachId: parseInt(coachId),
+        teachingMode: 'private',
+        scheduledDate: parseLocalDate(scheduledDate),
+        startTime: actualStart || '09:00',
+        endTime: endTime,
+        status: 'completed',
+        createdBy: parseInt(coachId),
+      },
+    })
+    finalCourseId = course.id
   }
-}
+
+  const lessonDate = scheduledDate || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
+
+  const lesson = await prisma.lesson.create({
+    data: {
+      courseId: finalCourseId!,
+      studentId: parseInt(studentId),
+      coachId: parseInt(coachId),
+      actualStart: actualStart ? new Date(`${lessonDate}T${actualStart}`) : null,
+      actualEnd: actualEnd ? new Date(`${lessonDate}T${actualEnd}`) : null,
+      durationMinutes: durationMinutes ? parseInt(durationMinutes) : null,
+      content,
+      performance,
+      homework,
+      status: 'pending',
+    },
+  })
+
+  return apiSuccess(lesson, 201)
+})

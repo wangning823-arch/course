@@ -10,46 +10,49 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { authFetch } from '@/lib/fetch-client'
+import { User, UserWithClubs, Club, UserRole } from '@/types/api'
+import { useUserStore } from '@/stores/user-store'
 
-const roleLabels: Record<string, string> = {
+const roleLabels: Record<UserRole, string> = {
   super_admin: '系统管理员',
   club_admin: '俱乐部管理员',
   full_time_coach: '全职教练',
   part_time_coach: '兼职教练',
 }
 
-const roleColors: Record<string, 'default' | 'success' | 'warning' | 'primary'> = {
+const roleColors: Record<UserRole, 'default' | 'success' | 'warning' | 'secondary'> = {
   super_admin: 'default',
   club_admin: 'success',
-  full_time_coach: 'primary',
+  full_time_coach: 'secondary',
   part_time_coach: 'warning',
 }
 
-interface Club { id: number; name: string }
-
 export default function UsersPage() {
-  const [users, setUsers] = React.useState<any[]>([])
+  const [users, setUsers] = React.useState<UserWithClubs[]>([])
   const [clubs, setClubs] = React.useState<Club[]>([])
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
-  const [formData, setFormData] = React.useState({ name: '', phone: '', role: 'part_time_coach', password: '', clubId: '' })
+  const [formData, setFormData] = React.useState({ name: '', phone: '', role: 'part_time_coach' as UserRole, password: '', clubId: '' })
   const [editId, setEditId] = React.useState<number | null>(null)
-  const [currentUser, setCurrentUser] = React.useState<any>(null)
-  const [createdPassword, setCreatedPassword] = React.useState('')
+  const storeUser = useUserStore((s) => s.user)
   const [filterClubId, setFilterClubId] = React.useState<string>('all')
   const [phoneExists, setPhoneExists] = React.useState(false)
 
+  // 将 storeUser 转换为 User 类型（包含 clubId）
+  const currentUser = React.useMemo(() => {
+    if (!storeUser) return null
+    return {
+      ...storeUser,
+      status: 1,
+      createdAt: '',
+    } as User & { clubId?: number | null }
+  }, [storeUser])
+
   React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      setCurrentUser(user)
-      // 俱乐部管理员：自动锁定到自己的俱乐部
-      if (user.role === 'club_admin' && user.clubId) {
-        setFilterClubId(String(user.clubId))
-      }
+    if (storeUser?.role === 'club_admin' && storeUser.clubId) {
+      setFilterClubId(String(storeUser.clubId))
     }
-  }, [])
+  }, [storeUser])
 
   const availableRoles = React.useMemo(() => {
     if (!currentUser) return []
@@ -174,12 +177,13 @@ export default function UsersPage() {
         if (data.message) {
           // 已关联到俱乐部，显示提示
           alert(data.message)
-        } else if (data.defaultPassword) {
-          setCreatedPassword(data.defaultPassword)
+        } else {
+          // 创建成功提示
+          alert('用户创建成功')
         }
       }
       setDialogOpen(false)
-      setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'part_time_coach', password: '', clubId: '' })
+      setFormData({ name: '', phone: '', role: (availableRoles[0]?.value || 'part_time_coach') as UserRole, password: '', clubId: '' })
       setEditId(null)
       fetchUsers(filterClubId === 'all' ? '' : filterClubId)
     } catch (error) {
@@ -262,7 +266,7 @@ export default function UsersPage() {
           {availableRoles.length > 0 && (
             <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setPhoneExists(false); setExistingUserName(''); setEditingUser(null) } }}>
               <DialogTrigger asChild>
-                <Button onClick={() => { setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'part_time_coach', password: '', clubId: isClubAdminLocked ? String(currentUser?.clubId || '') : '' }); setEditId(null); setCreatedPassword('') }}>
+                <Button onClick={() => { setFormData({ name: '', phone: '', role: (availableRoles[0]?.value || 'part_time_coach') as UserRole, password: '', clubId: isClubAdminLocked ? String(currentUser?.clubId || '') : '' }); setEditId(null) }}>
                   <Plus className="h-4 w-4 mr-1" />添加用户
                 </Button>
               </DialogTrigger>
@@ -293,7 +297,7 @@ export default function UsersPage() {
                     <label className="text-sm font-medium">角色</label>
                     {editId ? (
                       canChangeRole && canChangeToFullTime ? (
-                        <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v })}>
+                        <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v as UserRole })}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="full_time_coach">全职教练</SelectItem>
@@ -304,7 +308,7 @@ export default function UsersPage() {
                         <Input value={roleLabels[formData.role] || formData.role} disabled className="bg-gray-50" />
                       )
                     ) : (
-                      <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v })}>
+                      <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v as UserRole })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {availableRoles.map((r) => (
@@ -355,13 +359,6 @@ export default function UsersPage() {
           )}
         </div>
       </div>
-
-      {createdPassword && (
-        <div className="bg-green-50 border border-green-200 rounded-md px-4 py-3 text-sm text-green-700">
-          用户创建成功！默认密码：<span className="font-mono font-bold">{createdPassword}</span>
-          <Button variant="ghost" size="sm" className="ml-2" onClick={() => setCreatedPassword('')}>关闭</Button>
-        </div>
-      )}
 
       <Card>
         <CardContent className="p-0">

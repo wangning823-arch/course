@@ -9,6 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { ClubSelector } from '@/components/club-selector'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
+import { useApi } from '@/hooks/use-api'
+import { authFetch } from '@/lib/fetch-client'
 
 const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' }> = {
   completed: { label: '已完成', variant: 'success' },
@@ -17,27 +21,52 @@ const statusMap: Record<string, { label: string; variant: 'default' | 'success' 
 }
 
 export default function HomePage() {
-  const [courses, setCourses] = React.useState<any[]>([])
-  const [stats, setStats] = React.useState({
-    todayCourses: 0,
-    weekLessons: 0,
-    activeStudents: 0,
-  })
-  const [platformStats, setPlatformStats] = React.useState({
-    totalClubs: 0,
-    totalUsers: 0,
-  })
-  const [role, setRole] = React.useState('')
+  const user = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
+  const role = user?.role || ''
+
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [selectedCourse, setSelectedCourse] = React.useState<any>(null)
 
-  React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      if (user.role) setRole(user.role)
+  // 构建 API URLs
+  const today = new Date()
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+  const courseUrl = React.useMemo(() => {
+    if (role === 'super_admin' || !currentClubId) return null
+    let url = `/api/courses?startDate=${dateStr}&endDate=${dateStr}`
+    if ((role === 'coach' || role === 'part_time_coach') && user?.id) {
+      url += `&coachId=${user.id}`
     }
-  }, [])
+    if (currentClubId && currentClubId !== 'all') {
+      url += `&clubId=${currentClubId}`
+    }
+    return url
+  }, [role, currentClubId, user?.id, dateStr])
+
+  const statsUrl = React.useMemo(() => {
+    if (role === 'super_admin' || !currentClubId) return null
+    let url = `/api/statistics?period=month`
+    if ((role === 'coach' || role === 'part_time_coach') && user?.id) {
+      url += `&coachId=${user.id}`
+    }
+    if (currentClubId && currentClubId !== 'all') {
+      url += `&clubId=${currentClubId}`
+    }
+    return url
+  }, [role, currentClubId, user?.id])
+
+  // 使用 SWR 获取数据
+  const { data: courses = [] } = useApi<any[]>(courseUrl)
+  const { data: statsData } = useApi<any>(statsUrl)
+
+  // 平台数据（系统管理员）
+  const { data: clubs } = useApi<any[]>('/api/clubs', {
+    revalidateOnFocus: false,
+  })
+  const { data: users } = useApi<any[]>('/api/users', {
+    revalidateOnFocus: false,
+  })
 
   // 兼职教练的快捷操作
   const partTimeCoachQuickActions = [
@@ -69,105 +98,23 @@ export default function HomePage() {
     return adminQuickActions
   }
 
-  // 获取业务数据（教练和俱乐部管理员）
-  const fetchBusinessData = React.useCallback(() => {
-    if (role === 'super_admin') return
-
-    const clubId = localStorage.getItem('currentClubId')
-    if (!clubId) return
-
-    const stored = localStorage.getItem('user')
-    const user = stored ? JSON.parse(stored) : null
-
-    const today = new Date()
-    const year = today.getFullYear()
-    const month = String(today.getMonth() + 1).padStart(2, '0')
-    const day = String(today.getDate()).padStart(2, '0')
-    const startDate = `${year}-${month}-${day}`
-    const endDate = startDate
-
-    let courseUrl: string
-    let statsUrl: string
-
-    if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
-      // 教练：只看自己的课程和统计，选择具体俱乐部时按俱乐部过滤
-      courseUrl = `/api/courses?startDate=${startDate}&endDate=${endDate}&coachId=${user.id}`
-      statsUrl = `/api/statistics?coachId=${user.id}&period=month`
-      if (clubId && clubId !== 'all') {
-        courseUrl += `&clubId=${clubId}`
-        statsUrl += `&clubId=${clubId}`
-      }
-    } else {
-      courseUrl = `/api/courses?clubId=${clubId}&startDate=${startDate}&endDate=${endDate}`
-      statsUrl = `/api/statistics?clubId=${clubId}&period=month`
-    }
-
-    fetch(courseUrl)
-      .then((res) => res.ok ? res.json() : Promise.reject(res))
-      .then((data) => {
-        setCourses(data)
-        setStats((prev) => ({ ...prev, todayCourses: data.length }))
-      })
-      .catch(console.error)
-
-    fetch(statsUrl)
-      .then((res) => res.ok ? res.json() : Promise.reject(res))
-      .then((data) => {
-        setStats((prev) => ({
-          ...prev,
-          weekLessons: data.totalLessons,
-          activeStudents: data.activeStudents,
-        }))
-      })
-      .catch(console.error)
-  }, [role])
-
   const handleCancelCourse = async () => {
     if (!selectedCourse) return
 
     try {
-      const res = await fetch(`/api/courses/${selectedCourse.id}`, {
+      const res = await authFetch(`/api/courses/${selectedCourse.id}`, {
         method: 'DELETE',
       })
 
       if (res.ok) {
         setCancelDialogOpen(false)
         setSelectedCourse(null)
-        fetchBusinessData()
+        // SWR 会自动重新验证
       }
     } catch (error) {
       console.error('取消课程失败:', error)
     }
   }
-
-  // 获取平台数据（系统管理员）
-  const fetchPlatformData = React.useCallback(() => {
-    if (role !== 'super_admin') return
-
-    Promise.all([
-      fetch('/api/clubs').then((res) => res.json()),
-      fetch('/api/users').then((res) => res.json()),
-    ])
-      .then(([clubs, users]) => {
-        setPlatformStats({
-          totalClubs: clubs.length,
-          totalUsers: users.length,
-        })
-      })
-      .catch(console.error)
-  }, [role])
-
-  React.useEffect(() => {
-    fetchBusinessData()
-    fetchPlatformData()
-
-    const handleClubChanged = () => {
-      fetchBusinessData()
-      fetchPlatformData()
-    }
-    window.addEventListener('clubChanged', handleClubChanged)
-    return () => window.removeEventListener('clubChanged', handleClubChanged)
-  }, [fetchBusinessData, fetchPlatformData])
 
   const quickActions = getQuickActions()
 
@@ -188,7 +135,7 @@ export default function HomePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">俱乐部总数</p>
-                  <p className="text-2xl font-bold mt-1">{platformStats.totalClubs}</p>
+                  <p className="text-2xl font-bold mt-1">{clubs?.length || 0}</p>
                 </div>
                 <Building2 className="h-12 w-12 text-blue-500 opacity-30" />
               </div>
@@ -199,7 +146,7 @@ export default function HomePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">用户总数</p>
-                  <p className="text-2xl font-bold mt-1">{platformStats.totalUsers}</p>
+                  <p className="text-2xl font-bold mt-1">{users?.length || 0}</p>
                 </div>
                 <UserCog className="h-12 w-12 text-green-500 opacity-30" />
               </div>
@@ -216,7 +163,7 @@ export default function HomePage() {
                   <Calendar className="h-5 w-5 text-blue-500" />
                   <div>
                     <p className="text-xs text-gray-500">今日课程</p>
-                    <p className="text-lg font-bold">{stats.todayCourses}</p>
+                    <p className="text-lg font-bold">{courses?.length || 0}</p>
                   </div>
                 </div>
               </CardContent>
@@ -229,7 +176,7 @@ export default function HomePage() {
                   <Timer className="h-5 w-5 text-green-500" />
                   <div>
                     <p className="text-xs text-gray-500">本月课时</p>
-                    <p className="text-lg font-bold">{stats.weekLessons}</p>
+                    <p className="text-lg font-bold">{statsData?.totalLessons || 0}</p>
                   </div>
                 </div>
               </CardContent>
@@ -242,7 +189,7 @@ export default function HomePage() {
                   <Users className="h-5 w-5 text-yellow-500" />
                   <div>
                     <p className="text-xs text-gray-500">活跃学员</p>
-                    <p className="text-lg font-bold">{stats.activeStudents}</p>
+                    <p className="text-lg font-bold">{statsData?.activeStudents || 0}</p>
                   </div>
                 </div>
               </CardContent>
@@ -255,7 +202,7 @@ export default function HomePage() {
                   <BookOpen className="h-5 w-5 text-purple-500" />
                   <div>
                     <p className="text-xs text-gray-500">课时统计</p>
-                    <p className="text-lg font-bold">{stats.weekLessons}节</p>
+                    <p className="text-lg font-bold">{statsData?.totalLessons || 0}节</p>
                   </div>
                 </div>
               </CardContent>

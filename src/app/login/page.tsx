@@ -4,12 +4,16 @@ import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
 
 export default function LoginPage() {
   const [phone, setPhone] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState('')
+  const setAuth = useUserStore((s) => s.setAuth)
+  const setCurrentClubId = useClubStore((s) => s.setCurrentClubId)
 
   const handleLogin = async () => {
     if (!phone || phone.length !== 11) {
@@ -33,14 +37,13 @@ export default function LoginPage() {
         setError(data.error || '登录失败')
         return
       }
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
-      // 非超管：存储俱乐部ID到 localStorage
-      // 教练默认选"全部俱乐部"
+      // 使用 Zustand 存储状态
+      setAuth(data.token, data.user)
+      // 设置当前俱乐部ID
       if (data.user.role === 'coach' || data.user.role === 'part_time_coach') {
-        localStorage.setItem('currentClubId', 'all')
+        setCurrentClubId('all')
       } else if (data.user.clubId) {
-        localStorage.setItem('currentClubId', String(data.user.clubId))
+        setCurrentClubId(String(data.user.clubId))
       }
       window.location.href = '/'
     } catch (e) {
@@ -86,10 +89,6 @@ export default function LoginPage() {
           <Button className="w-full" onClick={handleLogin} disabled={loading}>
             {loading ? '登录中...' : '登录'}
           </Button>
-          <div className="text-xs text-center text-gray-400 space-y-1">
-            <p>系统管理员：13800000001 / 123456</p>
-            <p>俱乐部管理员：13800000002 / 123456</p>
-          </div>
         </CardContent>
       </Card>
     </div>

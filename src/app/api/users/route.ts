@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAuthUser } from '@/lib/auth'
-import crypto from 'crypto'
-
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex')
-}
+import { hashPassword } from '@/lib/password'
 
 // GET - 获取用户列表
 export async function GET(request: NextRequest) {
@@ -157,7 +153,7 @@ export async function POST(request: NextRequest) {
 
   // 手机号不存在：创建新用户
   const finalPassword = password || '123456'
-  const passwordHash = hashPassword(finalPassword)
+  const passwordHash = await hashPassword(finalPassword)
 
   const user = await prisma.user.create({
     data: { phone, name, role, passwordHash },
@@ -229,6 +225,5 @@ export async function POST(request: NextRequest) {
     name: user.name,
     phone: user.phone,
     role: user.role,
-    defaultPassword: finalPassword,
   })
 }

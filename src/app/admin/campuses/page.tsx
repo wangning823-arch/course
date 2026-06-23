@@ -10,72 +10,41 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClubSelector } from '@/components/club-selector'
 import { authFetch } from '@/lib/fetch-client'
+import { useApi, mutate } from '@/hooks/use-api'
+import { useUserStore } from '@/stores/user-store'
+import { useClubStore } from '@/stores/club-store'
 
 export default function CampusesPage() {
-  const [campuses, setCampuses] = React.useState<any[]>([])
-  const [clubs, setClubs] = React.useState<any[]>([])
-  const [loading, setLoading] = React.useState(true)
+  const user = useUserStore((s) => s.user)
+  const currentClubId = useClubStore((s) => s.currentClubId)
+
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ clubId: '', name: '', address: '', phone: '' })
   const [editId, setEditId] = React.useState<number | null>(null)
-  const [role, setRole] = React.useState('')
-  const [userClubId, setUserClubId] = React.useState('')
 
-  React.useEffect(() => {
-    const stored = localStorage.getItem('user')
-    if (stored) {
-      const user = JSON.parse(stored)
-      setRole(user.role || '')
-      if (user.clubId) setUserClubId(String(user.clubId))
-    }
-  }, [])
-
+  const role = user?.role || ''
+  const userClubId = user?.clubId ? String(user.clubId) : ''
   const isClubAdmin = role === 'club_admin'
 
-  const fetchCampuses = async () => {
-    setLoading(true)
-    try {
-      const clubId = isClubAdmin ? userClubId : localStorage.getItem('currentClubId')
-      const url = clubId ? `/api/campuses?clubId=${clubId}` : '/api/campuses'
-      const res = await authFetch(url)
-      const data = await res.json()
-      setCampuses(data)
-    } catch (error) {
-      console.error('获取校区失败:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  // 构建校区 API URL
+  const campusesUrl = React.useMemo(() => {
+    const clubId = isClubAdmin ? userClubId : currentClubId
+    return clubId ? `/api/campuses?clubId=${clubId}` : '/api/campuses'
+  }, [isClubAdmin, userClubId, currentClubId])
 
-  const fetchClubs = async () => {
-    try {
-      if (isClubAdmin && userClubId) {
-        const res = await authFetch(`/api/clubs/${userClubId}`)
-        const data = await res.json()
-        if (data) setClubs([data])
-        return
-      }
-      const res = await authFetch('/api/clubs')
-      const data = await res.json()
-      setClubs(data)
-    } catch (error) {
-      console.error('获取俱乐部失败:', error)
-    }
-  }
+  const { data: campuses, isLoading: loading } = useApi<any[]>(campusesUrl)
+
+  // 俱乐部列表
+  const clubsUrl = isClubAdmin && userClubId ? `/api/clubs/${userClubId}` : '/api/clubs'
+  const { data: clubsData } = useApi<any>(clubsUrl)
+  const clubs = React.useMemo(() => {
+    if (isClubAdmin && userClubId && clubsData) return [clubsData]
+    if (Array.isArray(clubsData)) return clubsData
+    return []
+  }, [clubsData, isClubAdmin, userClubId])
 
   React.useEffect(() => {
-    if (isClubAdmin && !userClubId) return
-    fetchCampuses()
-    fetchClubs()
-  }, [isClubAdmin, userClubId])
-
-  // 监听俱乐部切换
-  React.useEffect(() => {
-    const handleClubChanged = () => {
-      fetchCampuses()
-    }
-    window.addEventListener('clubChanged', handleClubChanged)
-    return () => window.removeEventListener('clubChanged', handleClubChanged)
+    // SWR 自动加载数据
   }, [])
 
   const handleSubmit = async () => {
@@ -98,7 +67,7 @@ export default function CampusesPage() {
       setDialogOpen(false)
       setFormData({ clubId: '', name: '', address: '', phone: '' })
       setEditId(null)
-      fetchCampuses()
+      mutate(campusesUrl)
     } catch (error) {
       console.error('操作失败:', error)
     }
@@ -108,7 +77,7 @@ export default function CampusesPage() {
     if (!confirm('确定要删除该校区吗？')) return
     try {
       await authFetch(`/api/campuses/${id}`, { method: 'DELETE' })
-      fetchCampuses()
+      mutate(campusesUrl)
     } catch (error) {
       console.error('删除失败:', error)
     }
@@ -126,7 +95,7 @@ export default function CampusesPage() {
         <h1 className="text-2xl font-bold">校区管理</h1>
         <div className="flex items-center gap-2">
           <ClubSelector />
-          <Button variant="outline" onClick={fetchCampuses}>
+          <Button variant="outline" onClick={() => mutate(campusesUrl)}>
             <RefreshCw className="h-4 w-4 mr-1" />
             刷新
           </Button>
@@ -183,7 +152,7 @@ export default function CampusesPage() {
         <CardContent className="p-0">
           {loading ? (
             <div className="p-8 text-center text-gray-500">加载中...</div>
-          ) : campuses.length === 0 ? (
+          ) : !campuses || campuses.length === 0 ? (
             <div className="p-8 text-center text-gray-500">暂无数据</div>
           ) : (
             <Table>

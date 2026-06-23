@@ -468,7 +468,7 @@ export default function SchedulePage() {
         }
       }
 
-      const res = await fetch(url)
+      const res = await authFetch(url)
       const data = await res.json()
       setCourses(data)
     } catch (e) {
@@ -526,7 +526,7 @@ export default function SchedulePage() {
     }
 
     try {
-      const res = await fetch('/api/courses', {
+      const res = await authFetch('/api/courses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -560,7 +560,7 @@ export default function SchedulePage() {
   const handleDelete = async () => {
     if (!selectedCourse) return
     try {
-      await fetch(`/api/courses/${selectedCourse.id}`, { method: 'DELETE' })
+      await authFetch(`/api/courses/${selectedCourse.id}`, { method: 'DELETE' })
       setDeleteDialogOpen(false)
       setSelectedCourse(null)
       loadCourses()
@@ -572,7 +572,7 @@ export default function SchedulePage() {
   // 检查课程是否已记录课时
   const checkCourseRecorded = async (courseId: number) => {
     try {
-      const res = await fetch(`/api/courses/${courseId}/lessons`)
+      const res = await authFetch(`/api/courses/${courseId}/lessons`)
       const data = await res.json()
       setCourseRecorded(data.recorded)
     } catch {
@@ -585,7 +585,7 @@ export default function SchedulePage() {
     if (!selectedCourse) return
     setRecording(true)
     try {
-      const res = await fetch(`/api/courses/${selectedCourse.id}/lessons`, { method: 'POST' })
+      const res = await authFetch(`/api/courses/${selectedCourse.id}/lessons`, { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
         setCourseRecorded(true)
