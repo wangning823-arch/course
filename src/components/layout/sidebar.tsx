@@ -44,7 +44,6 @@ const adminMenuItems = [
   { icon: Calendar, label: '排课管理', href: '/schedule' },
   { icon: Timer, label: '课时记录', href: '/lessons' },
   { icon: BarChart3, label: '课时统计', href: '/statistics' },
-  { icon: GraduationCap, label: '学员管理', href: '/admin/students' },
 ]
 
 // 系统管理菜单
@@ -57,7 +56,6 @@ const systemAdminItems = {
     { icon: MessageSquare, label: '反馈管理', href: '/admin/feedback' },
   ],
   club_admin: [
-    { icon: BarChart3, label: '课时统计', href: '/statistics' },
     { icon: Users, label: '用户管理', href: '/admin/users' },
     { icon: MapPin, label: '校区管理', href: '/admin/campuses' },
     { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
