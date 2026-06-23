@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const clubId = searchParams.get('clubId')
 
   const where: any = {}
-  if (clubId) where.clubId = parseInt(clubId)
+  if (clubId && clubId !== 'all') where.clubId = parseInt(clubId)
 
   const campuses = await prisma.campus.findMany({
     where,

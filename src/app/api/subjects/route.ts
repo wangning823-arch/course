@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       // 私人科目：只看该教练自己的私人科目
       where.clubId = null
       where.coachId = parseInt(coachId)
-    } else if (clubId) {
+    } else if (clubId && clubId !== 'all') {
       // 指定俱乐部 + 教练：加载该俱乐部的科目 + 教练的私人科目
       where.OR = [
         { clubId: parseInt(clubId) },

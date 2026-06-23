@@ -26,17 +26,17 @@ export function ClubSelector() {
     const user = stored ? JSON.parse(stored) : null
 
     if (role === 'super_admin') {
-      // 超管：获取所有俱乐部
+      // 超管：获取所有俱乐部，默认选"全部俱乐部"
       fetch('/api/clubs')
         .then((res) => res.json())
         .then((data) => {
           setClubs(data)
           const saved = localStorage.getItem('currentClubId')
-          if (saved && data.some((c: Club) => c.id === parseInt(saved))) {
+          if (saved && (saved === 'all' || data.some((c: Club) => c.id === parseInt(saved)))) {
             setCurrentClubId(saved)
-          } else if (data.length > 0) {
-            setCurrentClubId(String(data[0].id))
-            localStorage.setItem('currentClubId', String(data[0].id))
+          } else {
+            setCurrentClubId('all')
+            localStorage.setItem('currentClubId', 'all')
           }
         })
         .catch(() => {})

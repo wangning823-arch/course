@@ -212,8 +212,30 @@ export default function UsersPage() {
       password: '', clubId: '',
     })
     setEditId(user.id)
+    setEditingUser(user)
     setDialogOpen(true)
   }
+
+  const [editingUser, setEditingUser] = React.useState<any>(null)
+
+  // 检查是否可以更改角色
+  const canChangeRole = React.useMemo(() => {
+    if (!editingUser || !currentUser) return false
+    // 只有教练角色可以更改
+    if (editingUser.role !== 'full_time_coach' && editingUser.role !== 'part_time_coach') return false
+    // 系统管理员和俱乐部管理员可以更改
+    return currentUser.role === 'super_admin' || currentUser.role === 'club_admin'
+  }, [editingUser, currentUser])
+
+  // 检查是否可以改为全职教练
+  const canChangeToFullTime = React.useMemo(() => {
+    if (!editingUser) return false
+    // 如果已经是全职教练，可以改为兼职
+    if (editingUser.role === 'full_time_coach') return true
+    // 兼职教练改全职需要检查俱乐部数量
+    // editingUser.clubCount 在获取用户列表时传入
+    return editingUser.clubCount <= 1
+  }, [editingUser])
 
   return (
     <div className="space-y-4">
@@ -238,7 +260,7 @@ export default function UsersPage() {
             刷新
           </Button>
           {availableRoles.length > 0 && (
-            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setPhoneExists(false); setExistingUserName('') } }}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setPhoneExists(false); setExistingUserName(''); setEditingUser(null) } }}>
               <DialogTrigger asChild>
                 <Button onClick={() => { setFormData({ name: '', phone: '', role: availableRoles[0]?.value || 'part_time_coach', password: '', clubId: isClubAdminLocked ? String(currentUser?.clubId || '') : '' }); setEditId(null); setCreatedPassword('') }}>
                   <Plus className="h-4 w-4 mr-1" />添加用户
@@ -270,7 +292,17 @@ export default function UsersPage() {
                   <div className="space-y-2">
                     <label className="text-sm font-medium">角色</label>
                     {editId ? (
-                      <Input value={roleLabels[formData.role] || formData.role} disabled className="bg-gray-50" />
+                      canChangeRole && canChangeToFullTime ? (
+                        <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="full_time_coach">全职教练</SelectItem>
+                            <SelectItem value="part_time_coach">兼职教练</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input value={roleLabels[formData.role] || formData.role} disabled className="bg-gray-50" />
+                      )
                     ) : (
                       <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -280,6 +312,9 @@ export default function UsersPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                    )}
+                    {editId && canChangeRole && !canChangeToFullTime && (
+                      <p className="text-xs text-amber-600">该教练已关联多家俱乐部，无法修改角色</p>
                     )}
                   </div>
                   {needClubSelect && !editId && (

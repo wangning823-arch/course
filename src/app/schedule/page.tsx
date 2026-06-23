@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Plus, Trash2, Edit, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -63,6 +64,7 @@ interface Campus { id: number; name: string }
 interface Student { id: number; name: string }
 
 export default function SchedulePage() {
+  const router = useRouter()
   const [weekOffset, setWeekOffset] = React.useState(0)
   const [courses, setCourses] = React.useState<CourseData[]>([])
   const [loading, setLoading] = React.useState(false)
@@ -367,7 +369,9 @@ export default function SchedulePage() {
       const data = await res.json()
       if (res.ok) {
         setCourseRecorded(true)
-        alert(`已成功记录 ${data.count} 条课时`)
+        setDetailDialogOpen(false)
+        // 跳转到课时记录页面，方便直接确认
+        router.push(`/lessons?courseId=${selectedCourse.id}`)
       } else {
         alert(data.error || '记录失败')
       }

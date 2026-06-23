@@ -39,9 +39,10 @@ export default function StatisticsPage() {
           url += `&clubId=${clubId}`
         }
       } else {
-        // 管理员/全职教练：按俱乐部过滤
-        if (!clubId || clubId === 'all') { setLoading(false); return }
-        url += `&clubId=${clubId}`
+        // 管理员/全职教练：选择具体俱乐部时按俱乐部过滤，'all'时不过滤
+        if (clubId && clubId !== 'all') {
+          url += `&clubId=${clubId}`
+        }
       }
 
       const res = await fetch(url)

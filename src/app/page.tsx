@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { Calendar, Timer, Users, DollarSign, ArrowRight, Building2, UserCog, Trash2 } from 'lucide-react'
+import { Calendar, Timer, Users, BookOpen, ArrowRight, Building2, UserCog, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -22,7 +22,6 @@ export default function HomePage() {
     todayCourses: 0,
     weekLessons: 0,
     activeStudents: 0,
-    monthIncome: 0,
   })
   const [platformStats, setPlatformStats] = React.useState({
     totalClubs: 0,
@@ -118,7 +117,6 @@ export default function HomePage() {
           ...prev,
           weekLessons: data.totalLessons,
           activeStudents: data.activeStudents,
-          monthIncome: data.monthIncome || 0,
         }))
       })
       .catch(console.error)
@@ -254,10 +252,10 @@ export default function HomePage() {
             <Card className="cursor-pointer hover:shadow-md transition-shadow">
               <CardContent className="p-3">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5 text-red-500" />
+                  <BookOpen className="h-5 w-5 text-purple-500" />
                   <div>
-                    <p className="text-xs text-gray-500">本月收入</p>
-                    <p className="text-lg font-bold">¥{stats.monthIncome.toLocaleString()}</p>
+                    <p className="text-xs text-gray-500">课时统计</p>
+                    <p className="text-lg font-bold">{stats.weekLessons}节</p>
                   </div>
                 </div>
               </CardContent>

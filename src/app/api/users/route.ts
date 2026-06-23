@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
   // 手机号检测模式：不按俱乐部过滤，搜索所有用户
   if (!phoneCheck) {
     // 按俱乐部过滤：通过 ClubMember 关联筛选属于该俱乐部的用户
-    if (clubId) {
+    if (clubId && clubId !== 'all') {
       where.memberships = { some: { clubId: parseInt(clubId) } }
     }
 
@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
     role: u.role,
     status: u.status,
     clubs: u.memberships.map((m) => m.club.name).join('、') || '-',
+    clubCount: u.memberships.length,
     createdAt: u.createdAt,
   }))
 

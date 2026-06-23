@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Search, Plus, Edit, Trash2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -52,6 +53,8 @@ interface Subject { id: number; name: string; clubId: number | null; coachId?: n
 interface Club { id: number; name: string }
 
 export default function LessonsPage() {
+  const searchParams = useSearchParams()
+  const courseIdFromUrl = searchParams.get('courseId')
   const [lessons, setLessons] = React.useState<LessonData[]>([])
   const [loading, setLoading] = React.useState(false)
   const [search, setSearch] = React.useState('')
@@ -239,7 +242,10 @@ export default function LessonsPage() {
     setLoading(true)
     try {
       let params: string
-      if (user?.role === 'part_time_coach' && user?.id) {
+      // 如果有 courseId 参数，直接按课程过滤
+      if (courseIdFromUrl) {
+        params = `courseId=${courseIdFromUrl}`
+      } else if (user?.role === 'part_time_coach' && user?.id) {
         // 兼职教练：只看自己的课时，选择具体俱乐部时按俱乐部过滤
         params = `coachId=${user.id}`
         if (clubId && clubId !== 'all') {
@@ -250,8 +256,8 @@ export default function LessonsPage() {
         params = `clubId=${clubId}`
       }
 
-      // 添加时间范围参数
-      if (timeRange !== 'all') {
+      // 添加时间范围参数（按课程过滤时不添加时间范围，显示所有）
+      if (!courseIdFromUrl && timeRange !== 'all') {
         params += `&timeRange=${timeRange}`
       }
 
@@ -265,7 +271,7 @@ export default function LessonsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, timeRange])
+  }, [search, timeRange, courseIdFromUrl])
 
   React.useEffect(() => {
     loadLessons()

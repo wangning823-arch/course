@@ -39,6 +39,31 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
+  // 验证角色更改权限
+  if (role) {
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, memberships: { select: { clubId: true } } },
+    })
+    if (targetUser) {
+      // 只有教练角色可以互换
+      const isCoachRole = targetUser.role === 'full_time_coach' || targetUser.role === 'part_time_coach'
+      const isTargetCoachRole = role === 'full_time_coach' || role === 'part_time_coach'
+      if (isCoachRole && isTargetCoachRole) {
+        // 兼职改全职：检查俱乐部数量
+        if (targetUser.role === 'part_time_coach' && role === 'full_time_coach') {
+          if (targetUser.memberships.length > 1) {
+            return NextResponse.json({ error: '该教练已关联多家俱乐部，无法改为全职教练' }, { status: 400 })
+          }
+        }
+      } else if (!isCoachRole && isTargetCoachRole) {
+        return NextResponse.json({ error: '只能在教练角色之间切换' }, { status: 400 })
+      } else if (isCoachRole && !isTargetCoachRole) {
+        return NextResponse.json({ error: '只能在教练角色之间切换' }, { status: 400 })
+      }
+    }
+  }
+
   const updateData: any = {}
   if (name !== undefined) updateData.name = name
   if (phone !== undefined) updateData.phone = phone

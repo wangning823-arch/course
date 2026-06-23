@@ -9,10 +9,16 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get('endDate')
   const coachId = searchParams.get('coachId')
   const clubId = searchParams.get('clubId')
+  const courseId = searchParams.get('courseId')
   const timeRange = searchParams.get('timeRange')
 
   const where: any = {}
-  if (clubId) where.course = { clubId: parseInt(clubId) }
+  // 按课程ID过滤（优先级最高）
+  if (courseId) {
+    where.courseId = parseInt(courseId)
+  } else if (clubId && clubId !== 'all') {
+    where.course = { clubId: parseInt(clubId) }
+  }
   if (search) {
     where.OR = [
       { course: { subject: { name: { contains: search } } } },
