@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '无权限' }, { status: 403 })
   }
 
-  const { clubId, coachId, subjectId, date, startTime, endTime, remark } = await request.json()
+  const { clubId, coachId, subjectId, date, startTime, endTime, remark, studentId: requestedStudentId } = await request.json()
 
   if (!clubId || !coachId || !date || !startTime || !endTime) {
     return NextResponse.json({ error: '请填写完整的预约信息' }, { status: 400 })
@@ -90,7 +90,6 @@ export async function POST(request: NextRequest) {
     studentId = student.id
   } else {
     // 家长：从请求中获取学员ID
-    const { studentId: requestedStudentId } = await request.json()
     if (requestedStudentId) {
       const student = await prisma.student.findFirst({
         where: {

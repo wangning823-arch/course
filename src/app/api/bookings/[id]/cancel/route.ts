@@ -42,6 +42,28 @@ export async function PUT(
     return NextResponse.json({ error: '无权取消该预约' }, { status: 403 })
   }
 
+  // 如果预约已确认，需要同时取消关联的课程
+  if (booking.status === 'confirmed') {
+    // 查找关联的课程（通过教练、日期、时间匹配）
+    const associatedCourse = await prisma.course.findFirst({
+      where: {
+        coachId: booking.coachId,
+        scheduledDate: booking.date,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        status: { not: 'cancelled' },
+      },
+    })
+
+    if (associatedCourse) {
+      // 取消关联的课程
+      await prisma.course.update({
+        where: { id: associatedCourse.id },
+        data: { status: 'cancelled' },
+      })
+    }
+  }
+
   // 更新预约状态
   const updatedBooking = await prisma.booking.update({
     where: { id: bookingId },

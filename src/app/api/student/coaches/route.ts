@@ -60,13 +60,28 @@ export async function GET(request: NextRequest) {
     })
   })
 
+  // 获取俱乐部所有科目（作为没有 coachPrice 的教练的备选）
+  const clubSubjects = await prisma.subject.findMany({
+    where: {
+      clubId: parseInt(clubId),
+      status: 1,
+    },
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      teachingMode: true,
+      durationMinutes: true,
+    },
+  })
+
   // 组装教练列表
   const coaches = memberships.map(m => ({
     id: m.user.id,
     name: m.user.name,
     avatar: m.user.avatar,
     gender: m.user.gender,
-    subjects: coachSubjects[m.user.id] || [],
+    subjects: coachSubjects[m.user.id] || clubSubjects,
   }))
 
   return NextResponse.json(coaches)

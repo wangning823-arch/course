@@ -1,6 +1,3 @@
-// 俱乐部课时系统 - 数据库 Schema
-// 使用 SQLite 开发，生产环境切换到 PostgreSQL
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,140 +7,122 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 用户表
 model User {
-  id            Int       @id @default(autoincrement())
-  phone         String    @unique // 手机号
-  name          String    // 姓名
-  avatar        String?   // 头像URL
-  gender        Int?      // 性别：0未知 1男 2女
-  birthDate     DateTime? // 出生日期
-  passwordHash  String?   // 密码哈希
-  role          String    // 角色：super_admin/club_admin/full_time_coach/part_time_coach/student/parent
-  status        Int       @default(1) // 状态：0禁用 1启用
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  // 关联
-  adminClubs    Club[]    @relation("ClubAdmin")
-  coachCourses  Course[]  @relation("CourseCoach")
-  createdCourses Course[] @relation("CourseCreator")
-  coachLessons  Lesson[]  @relation("LessonCoach")
-  lessonsConfirmed Lesson[] @relation("LessonConfirmer")
-  memberships   ClubMember[]
-  coachPrices   CoachPrice[]
-  coachStudents Student[]    @relation("CoachStudents")
-  subjectCoaches Subject[]   @relation("SubjectCoach")
-  feedbacks     Feedback[]   @relation("FeedbackUser")
-  repliedFeedbacks Feedback[] @relation("FeedbackReplier")
-  managedStudents Student[]  @relation("StudentUser")    // 成年学员自己管理的Student
-  childStudents   Student[]  @relation("StudentParent")  // 家长管理的未成年学员
-  coachBookings   Booking[]  @relation("BookingCoach")   // 教练收到的预约
-  sentBookings    Booking[]  @relation("BookingUser")    // 发起的预约
-  notifications   Notification[]
+  id               Int            @id @default(autoincrement())
+  phone            String         @unique
+  name             String
+  avatar           String?
+  gender           Int?
+  birthDate        DateTime?
+  passwordHash     String?
+  role             String
+  status           Int            @default(1)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  sentBookings     Booking[]      @relation("BookingUser")
+  coachBookings    Booking[]      @relation("BookingCoach")
+  adminClubs       Club[]         @relation("ClubAdmin")
+  memberships      ClubMember[]
+  coachPrices      CoachPrice[]
+  createdCourses   Course[]       @relation("CourseCreator")
+  coachCourses     Course[]       @relation("CourseCoach")
+  repliedFeedbacks Feedback[]     @relation("FeedbackReplier")
+  feedbacks        Feedback[]     @relation("FeedbackUser")
+  lessonsConfirmed Lesson[]       @relation("LessonConfirmer")
+  coachLessons     Lesson[]       @relation("LessonCoach")
+  notifications    Notification[]
+  childStudents    Student[]      @relation("StudentParent")
+  managedStudents  Student[]      @relation("StudentUser")
+  coachStudents    Student[]      @relation("CoachStudents")
+  subjectCoaches   Subject[]      @relation("SubjectCoach")
 }
 
-// 俱乐部表
 model Club {
-  id            Int       @id @default(autoincrement())
-  name          String    // 俱乐部名称
-  description   String?   // 俱乐部简介
-  logo          String?   // Logo URL
-  coverImage    String?   // 封面图URL
-  phone         String?   // 联系电话
-  address       String?   // 总部地址
-  businessHours String?   // 营业时间
-  adminId       Int?      // 管理员ID
-  status        Int       @default(1) // 状态：0禁用 1启用
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  // 关联
-  admin         User?     @relation("ClubAdmin", fields: [adminId], references: [id])
+  id            Int          @id @default(autoincrement())
+  name          String
+  description   String?
+  logo          String?
+  coverImage    String?
+  phone         String?
+  address       String?
+  businessHours String?
+  adminId       Int?
+  status        Int          @default(1)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  bookings      Booking[]
   campuses      Campus[]
-  subjects      Subject[]
-  courses       Course[]
-  settlements   Settlement[]
+  admin         User?        @relation("ClubAdmin", fields: [adminId], references: [id])
   members       ClubMember[]
   coachPrices   CoachPrice[]
+  courses       Course[]
+  settlements   Settlement[]
   students      Student[]
-  bookings      Booking[]
+  subjects      Subject[]
 }
 
-// 校区表
 model Campus {
-  id            Int       @id @default(autoincrement())
-  clubId        Int       // 所属俱乐部
-  name          String    // 校区名称
-  address       String    // 校区地址
-  phone         String?   // 联系电话
-  businessHours String?   // 营业时间
-  status        Int       @default(1) // 状态：0禁用 1启用
-  createdAt     DateTime  @default(now())
-
-  // 关联
-  club          Club      @relation(fields: [clubId], references: [id])
+  id            Int      @id @default(autoincrement())
+  clubId        Int
+  name          String
+  address       String
+  phone         String?
+  businessHours String?
+  status        Int      @default(1)
+  createdAt     DateTime @default(now())
+  club          Club     @relation(fields: [clubId], references: [id])
   courses       Course[]
 
   @@index([clubId])
 }
 
-// 俱乐部成员表（多对多）
 model ClubMember {
-  id        Int      @id @default(autoincrement())
-  clubId    Int
-  userId    Int
-  role      String   // 角色：admin/coach
-  joinedAt  DateTime @default(now())
-
-  // 关联
-  club      Club     @relation(fields: [clubId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  id       Int      @id @default(autoincrement())
+  clubId   Int
+  userId   Int
+  role     String
+  joinedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id])
+  club     Club     @relation(fields: [clubId], references: [id])
 
   @@unique([clubId, userId])
 }
 
-// 科目表
 model Subject {
-  id              Int      @id @default(autoincrement())
-  clubId          Int?     // 所属俱乐部（null=私人科目）
-  coachId         Int?     // 所属教练（私人科目时使用）
-  name            String   // 科目名称
-  category        String?  // 分类：篮球/足球/钢琴等
-  teachingMode    String   // 授课方式：private/group
-  durationMinutes Int      @default(60) // 标准课时长度(分钟)
-  price           Decimal  // 标准课时单价
-  description     String?  // 科目描述
-  status          Int      @default(1) // 状态：0禁用 1启用
-  createdAt       DateTime @default(now())
-
-  // 关联
-  club            Club?    @relation(fields: [clubId], references: [id])
-  coach           User?    @relation("SubjectCoach", fields: [coachId], references: [id])
+  id              Int              @id @default(autoincrement())
+  clubId          Int?
+  coachId         Int?
+  name            String
+  category        String?
+  teachingMode    String
+  durationMinutes Int              @default(60)
+  price           Decimal
+  description     String?
+  status          Int              @default(1)
+  createdAt       DateTime         @default(now())
+  bookings        Booking[]
+  coachPrices     CoachPrice[]
   courses         Course[]
   settlementItems SettlementItem[]
-  coachPrices     CoachPrice[]
-  bookings        Booking[]
+  coach           User?            @relation("SubjectCoach", fields: [coachId], references: [id])
+  club            Club?            @relation(fields: [clubId], references: [id])
 
   @@index([clubId])
   @@index([coachId])
 }
 
-// 教练定价表（俱乐部+教练+科目+授课模式 = 价格）
 model CoachPrice {
-  id            Int      @id @default(autoincrement())
-  clubId        Int      // 俱乐部ID
-  coachId       Int      // 教练ID
-  subjectId     Int      // 科目ID
-  teachingMode  String   // 授课方式：private=一对一, duo=一对二, group=一对多
-  price         Decimal  // 课时单价(元)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // 关联
-  club          Club     @relation(fields: [clubId], references: [id])
-  coach         User     @relation(fields: [coachId], references: [id])
-  subject       Subject  @relation(fields: [subjectId], references: [id])
+  id           Int      @id @default(autoincrement())
+  clubId       Int
+  coachId      Int
+  subjectId    Int
+  teachingMode String
+  price        Decimal
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  subject      Subject  @relation(fields: [subjectId], references: [id])
+  coach        User     @relation(fields: [coachId], references: [id])
+  club         Club     @relation(fields: [clubId], references: [id])
 
   @@unique([clubId, coachId, subjectId, teachingMode])
   @@index([clubId])
@@ -151,79 +130,70 @@ model CoachPrice {
   @@index([subjectId])
 }
 
-// 课程表（排课）
 model Course {
-  id             Int      @id @default(autoincrement())
-  clubId         Int?     // 所属俱乐部（null=私人课程）
-  campusId       Int?     // 校区ID，支持多校区
-  subjectId      Int
-  coachId        Int      // 教练ID
-  teachingMode   String   // 授课方式：private/group
-  scheduledDate  DateTime // 上课日期
-  startTime      String   // 开始时间
-  endTime        String   // 结束时间
-  location       String?  // 上课地点（具体教室/场地）
-  status         String   @default("scheduled") // 状态：scheduled/in_progress/completed/cancelled
-  remark         String?  // 备注
-  createdBy      Int      // 创建人
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  // 关联
-  club           Club?    @relation(fields: [clubId], references: [id])
-  campus         Campus?  @relation(fields: [campusId], references: [id])
-  subject        Subject  @relation(fields: [subjectId], references: [id])
-  coach          User     @relation("CourseCoach", fields: [coachId], references: [id])
-  creator        User     @relation("CourseCreator", fields: [createdBy], references: [id])
-  students       CourseStudent[]
-  lessons        Lesson[]
+  id            Int             @id @default(autoincrement())
+  clubId        Int?
+  campusId      Int?
+  subjectId     Int
+  coachId       Int
+  teachingMode  String
+  scheduledDate DateTime
+  startTime     String
+  endTime       String
+  location      String?
+  status        String          @default("scheduled")
+  remark        String?
+  createdBy     Int
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  creator       User            @relation("CourseCreator", fields: [createdBy], references: [id])
+  coach         User            @relation("CourseCoach", fields: [coachId], references: [id])
+  subject       Subject         @relation(fields: [subjectId], references: [id])
+  campus        Campus?         @relation(fields: [campusId], references: [id])
+  club          Club?           @relation(fields: [clubId], references: [id])
+  students      CourseStudent[]
+  lessons       Lesson[]
 
   @@index([coachId, scheduledDate, startTime])
   @@index([clubId, scheduledDate])
   @@index([campusId, scheduledDate])
 }
 
-// 课程学生关联表（多对多）
 model CourseStudent {
-  id        Int    @id @default(autoincrement())
-  courseId   Int
+  id        Int     @id @default(autoincrement())
+  courseId  Int
   studentId Int
-
-  // 关联
-  course    Course @relation(fields: [courseId], references: [id])
   student   Student @relation(fields: [studentId], references: [id])
+  course    Course  @relation(fields: [courseId], references: [id])
 
   @@unique([courseId, studentId])
 }
 
-// 学员表
 model Student {
-  id          Int      @id @default(autoincrement())
-  clubId      Int?     // 所属俱乐部，null=纯私有学员（仅教练可见，任何俱乐部不可见）
-  coachId     Int?     // 私有教练ID，null=俱乐部共享，有值=仅该教练可见
-  userId      Int?     // 关联登录账号（成年学员自己的User账号）
-  parentId    Int?     // 关联家长User账号（未成年学员）
-  studentType String   @default("adult") // 学员类型：adult=成年/minor=未成年
-  name        String   // 姓名
-  phone       String?  // 联系电话
-  gender      Int?     // 性别：0未知 1男 2女
-  birthDate   DateTime? // 出生日期
-  parentName  String?  // 家长姓名
-  parentPhone String?  // 家长电话
-  remark      String?  // 备注
-  status      Int      @default(1) // 状态：0禁用 1启用
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // 关联
-  club            Club?     @relation(fields: [clubId], references: [id])
-  coach           User?     @relation("CoachStudents", fields: [coachId], references: [id])
-  user            User?     @relation("StudentUser", fields: [userId], references: [id])
-  parent          User?     @relation("StudentParent", fields: [parentId], references: [id])
+  id              Int              @id @default(autoincrement())
+  clubId          Int?
+  coachId         Int?
+  userId          Int?
+  parentId        Int?
+  studentType     String           @default("adult")
+  name            String
+  phone           String?
+  gender          Int?
+  birthDate       DateTime?
+  parentName      String?
+  parentPhone     String?
+  remark          String?
+  status          Int              @default(1)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  bookings        Booking[]
   courses         CourseStudent[]
   lessons         Lesson[]
   settlementItems SettlementItem[]
-  bookings        Booking[]
+  parent          User?            @relation("StudentParent", fields: [parentId], references: [id])
+  user            User?            @relation("StudentUser", fields: [userId], references: [id])
+  coach           User?            @relation("CoachStudents", fields: [coachId], references: [id])
+  club            Club?            @relation(fields: [clubId], references: [id])
 
   @@index([clubId])
   @@index([coachId])
@@ -231,122 +201,108 @@ model Student {
   @@index([parentId])
 }
 
-// 课时记录表
 model Lesson {
-  id             Int      @id @default(autoincrement())
-  courseId        Int      // 关联课程
-  studentId      Int      // 学生ID
-  coachId        Int      // 教练ID
-  actualStart    DateTime? // 实际开始时间
-  actualEnd      DateTime? // 实际结束时间
-  durationMinutes Int?    // 实际时长(分钟)
-  content        String?  // 课程内容
-  performance    String?  // 学生表现
-  homework       String?  // 课后作业
-  status         String   @default("pending") // 状态：pending/confirmed/cancelled
-  confirmedAt    DateTime? // 确认时间
-  confirmedById  Int?     // 确认人
-  createdAt      DateTime @default(now())
-
-  // 关联
-  course         Course   @relation(fields: [courseId], references: [id])
-  student        Student  @relation(fields: [studentId], references: [id])
-  coach          User     @relation("LessonCoach", fields: [coachId], references: [id])
-  confirmer      User?    @relation("LessonConfirmer", fields: [confirmedById], references: [id])
+  id              Int              @id @default(autoincrement())
+  courseId        Int
+  studentId       Int
+  coachId         Int
+  actualStart     DateTime?
+  actualEnd       DateTime?
+  durationMinutes Int?
+  content         String?
+  performance     String?
+  homework        String?
+  status          String           @default("pending")
+  confirmedAt     DateTime?
+  confirmedById   Int?
+  createdAt       DateTime         @default(now())
+  confirmer       User?            @relation("LessonConfirmer", fields: [confirmedById], references: [id])
+  coach           User             @relation("LessonCoach", fields: [coachId], references: [id])
+  student         Student          @relation(fields: [studentId], references: [id])
+  course          Course           @relation(fields: [courseId], references: [id])
   settlementItems SettlementItem[]
 
   @@index([studentId, createdAt])
   @@index([coachId, createdAt])
 }
 
-// 费用结算表
 model Settlement {
-  id            Int      @id @default(autoincrement())
-  clubId        Int
-  coachId       Int
-  periodStart   DateTime // 结算周期开始
-  periodEnd     DateTime // 结算周期结束
-  totalLessons  Int      // 总课时数
-  totalMinutes  Int      // 总时长(分钟)
-  totalAmount   Decimal  // 总结算金额
-  status        String   @default("pending") // 状态：pending/paid/cancelled
-  paidAt        DateTime? // 支付时间
-  paidAmount    Decimal? // 实付金额
-  remark        String?
-  createdAt     DateTime @default(now())
-
-  // 关联
-  club          Club     @relation(fields: [clubId], references: [id])
-  items         SettlementItem[]
+  id           Int              @id @default(autoincrement())
+  clubId       Int
+  coachId      Int
+  periodStart  DateTime
+  periodEnd    DateTime
+  totalLessons Int
+  totalMinutes Int
+  totalAmount  Decimal
+  status       String           @default("pending")
+  paidAt       DateTime?
+  paidAmount   Decimal?
+  remark       String?
+  createdAt    DateTime         @default(now())
+  club         Club             @relation(fields: [clubId], references: [id])
+  items        SettlementItem[]
 
   @@index([coachId, periodStart])
 }
 
-// 结算明细表
 model SettlementItem {
-  id            Int      @id @default(autoincrement())
-  settlementId  Int
-  lessonId      Int
-  studentId     Int
-  subjectId     Int
-  durationMinutes Int    // 时长(分钟)
-  unitPrice     Decimal  // 单价
-  amount        Decimal  // 金额
-
-  // 关联
-  settlement    Settlement @relation(fields: [settlementId], references: [id])
-  lesson        Lesson     @relation(fields: [lessonId], references: [id])
-  student       Student    @relation(fields: [studentId], references: [id])
-  subject       Subject    @relation(fields: [subjectId], references: [id])
+  id              Int        @id @default(autoincrement())
+  settlementId    Int
+  lessonId        Int
+  studentId       Int
+  subjectId       Int
+  durationMinutes Int
+  unitPrice       Decimal
+  amount          Decimal
+  subject         Subject    @relation(fields: [subjectId], references: [id])
+  student         Student    @relation(fields: [studentId], references: [id])
+  lesson          Lesson     @relation(fields: [lessonId], references: [id])
+  settlement      Settlement @relation(fields: [settlementId], references: [id])
 
   @@index([settlementId])
 }
 
-// 用户反馈表
 model Feedback {
-  id            Int      @id @default(autoincrement())
-  userId        Int      // 提交用户ID
-  category      String   // 分类：feature/bug/other
-  title         String   // 标题
-  content       String   // 详细描述
-  status        String   @default("pending") // 状态：pending/processing/resolved
-  reply         String?  // 管理员回复
-  repliedAt     DateTime? // 回复时间
-  repliedById   Int?     // 回复人
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // 关联
-  user          User     @relation("FeedbackUser", fields: [userId], references: [id])
-  repliedBy     User?    @relation("FeedbackReplier", fields: [repliedById], references: [id])
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  category    String
+  title       String
+  content     String
+  status      String    @default("pending")
+  reply       String?
+  repliedAt   DateTime?
+  repliedById Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  repliedBy   User?     @relation("FeedbackReplier", fields: [repliedById], references: [id])
+  user        User      @relation("FeedbackUser", fields: [userId], references: [id])
 
   @@index([userId])
   @@index([status])
   @@index([createdAt])
 }
 
-// 预约表
 model Booking {
-  id          Int      @id @default(autoincrement())
-  clubId      Int      // 预约的俱乐部
-  studentId   Int      // 学员ID
-  coachId     Int      // 预约的教练
-  subjectId   Int?     // 预约的科目
-  userId      Int      // 发起预约的用户（学员自己或家长）
-  date        DateTime // 预约日期
-  startTime   String   // 开始时间
-  endTime     String   // 结束时间
-  status      String   @default("pending") // pending=待确认/confirmed=已确认/cancelled=已取消/rejected=已拒绝
-  remark      String?  // 备注
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // 关联
-  club        Club     @relation(fields: [clubId], references: [id])
-  student     Student  @relation(fields: [studentId], references: [id])
-  coach       User     @relation("BookingCoach", fields: [coachId], references: [id])
-  subject     Subject? @relation(fields: [subjectId], references: [id])
-  user        User     @relation("BookingUser", fields: [userId], references: [id])
+  id           Int      @id @default(autoincrement())
+  clubId       Int
+  studentId    Int
+  coachId      Int
+  subjectId    Int?
+  userId       Int
+  date         DateTime
+  startTime    String
+  endTime      String
+  status       String   @default("pending")
+  remark       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  rejectReason String?
+  user         User     @relation("BookingUser", fields: [userId], references: [id])
+  subject      Subject? @relation(fields: [subjectId], references: [id])
+  coach        User     @relation("BookingCoach", fields: [coachId], references: [id])
+  student      Student  @relation(fields: [studentId], references: [id])
+  club         Club     @relation(fields: [clubId], references: [id])
 
   @@index([clubId, date])
   @@index([coachId, date])
@@ -354,19 +310,16 @@ model Booking {
   @@index([status])
 }
 
-// 通知表
 model Notification {
-  id          Int      @id @default(autoincrement())
-  userId      Int      // 接收人
-  type        String   // 类型：booking_new/booking_confirmed/booking_cancelled
-  title       String   // 标题
-  content     String?  // 内容
-  relatedId   Int?     // 关联ID（如bookingId）
-  isRead      Boolean  @default(false)
-  createdAt   DateTime @default(now())
-
-  // 关联
-  user        User     @relation(fields: [userId], references: [id])
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String
+  title     String
+  content   String?
+  relatedId Int?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 
   @@index([userId, isRead])
   @@index([createdAt])

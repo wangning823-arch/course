@@ -13,6 +13,10 @@ const roleLabels: Record<string, string> = {
   super_admin: '超级管理员',
   club_admin: '俱乐部管理员',
   coach: '教练',
+  full_time_coach: '全职教练',
+  part_time_coach: '兼职教练',
+  parent: '家长',
+  student: '学员',
 }
 
 export default function ProfilePage() {

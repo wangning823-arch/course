@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Users, User, Check } from 'lucide-react'
+import { Users, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -25,7 +25,9 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
   const [selectedSubject, setSelectedSubject] = React.useState<any>(null)
   const [selectedDate, setSelectedDate] = React.useState(defaultDate || '')
   const [selectedTime, setSelectedTime] = React.useState(defaultTime || '')
+  const [selectedEndTime, setSelectedEndTime] = React.useState('')
   const [remark, setRemark] = React.useState('')
+  const [coachConflict, setCoachConflict] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
   const [successOpen, setSuccessOpen] = React.useState(false)
@@ -37,9 +39,11 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
     setSelectedSubject(null)
     setSelectedDate(defaultDate || '')
     setSelectedTime(defaultTime || '')
+    setSelectedEndTime('')
     setRemark('')
     setConfirmOpen(false)
     setSuccessOpen(false)
+    setCoachConflict(false)
 
     const fetchChildren = async () => {
       setLoading(true)
@@ -66,10 +70,10 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
 
   // 获取可预约的教练
   React.useEffect(() => {
-    if (!selectedChild?.clubId) return
+    if (!selectedChild?.club?.id) return
     const fetchCoaches = async () => {
       try {
-        const res = await authFetch(`/api/student/coaches?clubId=${selectedChild.clubId}`)
+        const res = await authFetch(`/api/student/coaches?clubId=${selectedChild.club.id}`)
         if (res.ok) {
           const data = await res.json()
           setCoaches(data)
@@ -79,35 +83,63 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
       }
     }
     fetchCoaches()
-  }, [selectedChild?.clubId])
+  }, [selectedChild?.club?.id])
+
+  // 开始时间变化时，自动设置结束时间（+1小时）
+  React.useEffect(() => {
+    if (selectedTime) {
+      const [h, m] = selectedTime.split(':').map(Number)
+      setSelectedEndTime(`${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+    }
+  }, [selectedTime])
+
+  // 检查教练时间冲突
+  React.useEffect(() => {
+    if (!selectedCoach || !selectedDate || !selectedTime || !selectedEndTime) {
+      setCoachConflict(false)
+      return
+    }
+    const checkConflict = async () => {
+      try {
+        const res = await authFetch(`/api/courses/check-conflict?coachId=${selectedCoach.id}&date=${selectedDate}&startTime=${selectedTime}&endTime=${selectedEndTime}`)
+        if (res.ok) {
+          const data = await res.json()
+          setCoachConflict(data.hasConflict)
+        }
+      } catch {
+        setCoachConflict(false)
+      }
+    }
+    checkConflict()
+  }, [selectedCoach?.id, selectedDate, selectedTime, selectedEndTime])
 
   const timeSlots = [
     '08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'
   ]
 
   const handleSubmit = async () => {
-    if (!selectedChild || !selectedCoach || !selectedSubject || !selectedDate || !selectedTime) return
+    if (!selectedChild || !selectedCoach || !selectedSubject || !selectedDate || !selectedTime || !selectedEndTime) return
     setSubmitting(true)
     try {
-      const [hours, minutes] = selectedTime.split(':').map(Number)
-      const endTime = `${String(hours + 1).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
       const res = await authFetch('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clubId: selectedChild.clubId,
+          clubId: selectedChild.club.id,
           coachId: selectedCoach.id,
           subjectId: selectedSubject.id,
           studentId: selectedChild.id,
           date: selectedDate,
           startTime: selectedTime,
-          endTime,
+          endTime: selectedEndTime,
           remark,
         }),
       })
       if (res.ok) {
         setConfirmOpen(false)
         setSuccessOpen(true)
+        // 通知其他页面刷新数据
+        window.dispatchEvent(new CustomEvent('bookingChanged'))
         setSelectedCoach(null)
         setSelectedSubject(null)
         setSelectedDate('')
@@ -124,7 +156,7 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
     }
   }
 
-  const canSubmit = selectedSubject && selectedDate && selectedTime
+  const canSubmit = selectedSubject && selectedDate && selectedTime && selectedEndTime && !coachConflict
 
   return (
     <>
@@ -163,39 +195,30 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
                 </div>
               )}
 
-              {/* 教练选择 */}
+              {/* 教练选择 - 下拉框 */}
               {selectedChild && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">选择教练</label>
                   {coaches.length === 0 ? (
                     <p className="text-sm text-gray-400">暂无可预约的教练</p>
                   ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      {coaches.map((coach) => (
-                        <div
-                          key={coach.id}
-                          className={`p-2 rounded-lg border cursor-pointer transition-all text-sm ${
-                            selectedCoach?.id === coach.id
-                              ? 'border-blue-500 bg-blue-50'
-                              : 'border-gray-200 hover:bg-gray-50'
-                          }`}
-                          onClick={() => {
-                            setSelectedCoach(coach)
-                            setSelectedSubject(null)
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                              <User className="h-4 w-4 text-gray-500" />
-                            </div>
-                            <div>
-                              <div className="font-medium">{coach.name}</div>
-                              <div className="text-xs text-gray-500">{coach.subjects?.length || 0}个科目</div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <Select
+                      value={selectedCoach?.id?.toString() || ''}
+                      onValueChange={(value) => {
+                        const coach = coaches.find((c: any) => c.id.toString() === value)
+                        setSelectedCoach(coach)
+                        setSelectedSubject(null)
+                      }}
+                    >
+                      <SelectTrigger><SelectValue placeholder="请选择教练" /></SelectTrigger>
+                      <SelectContent>
+                        {coaches.map((coach: any) => (
+                          <SelectItem key={coach.id} value={coach.id.toString()}>
+                            {coach.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 </div>
               )}
@@ -215,7 +238,7 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
                     <SelectContent>
                       {selectedCoach.subjects?.map((subject: any) => (
                         <SelectItem key={subject.id} value={subject.id.toString()}>
-                          {subject.name} - ¥{subject.price}/课时
+                          {subject.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -225,7 +248,7 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
 
               {/* 日期时间 */}
               {selectedCoach && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-3">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">日期</label>
                     <Input
@@ -235,17 +258,27 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
                       min={new Date().toISOString().split('T')[0]}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">时间</label>
-                    <Select value={selectedTime} onValueChange={setSelectedTime}>
-                      <SelectTrigger><SelectValue placeholder="请选择时间" /></SelectTrigger>
-                      <SelectContent>
-                        {timeSlots.map((time) => (
-                          <SelectItem key={time} value={time}>{time}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">开始时间</label>
+                      <Input
+                        type="time"
+                        value={selectedTime}
+                        onChange={(e) => setSelectedTime(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">结束时间</label>
+                      <Input
+                        type="time"
+                        value={selectedEndTime}
+                        onChange={(e) => setSelectedEndTime(e.target.value)}
+                      />
+                    </div>
                   </div>
+                  {coachConflict && (
+                    <p className="text-sm text-red-500">该教练在此时间段已有课程，请选择其他时间</p>
+                  )}
                 </div>
               )}
 
@@ -282,7 +315,7 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
             <div className="flex justify-between"><span className="text-gray-500">教练：</span><span>{selectedCoach?.name}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">科目：</span><span>{selectedSubject?.name}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">日期：</span><span>{selectedDate}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">时间：</span><span>{selectedTime}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">时间：</span><span>{selectedTime} - {selectedEndTime}</span></div>
             {remark && <div className="flex justify-between"><span className="text-gray-500">备注：</span><span>{remark}</span></div>}
           </div>
           <DialogFooter>

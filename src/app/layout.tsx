@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const superAdminBlockedPaths = ['/schedule', '/lessons', '/admin/campuses', '/admin/subjects', '/admin/coach-prices', '/feedback']
 
   // 学员和家长只能访问的页面
-  const studentAllowedPaths = ['/student', '/parent']
+  const studentAllowedPaths = ['/student', '/parent', '/profile', '/feedback']
   const studentBlockedPaths = ['/schedule', '/lessons', '/admin', '/statistics', '/feedback']
 
   // 等待 Zustand persist hydration 完成

@@ -37,6 +37,8 @@ function getWeekDates(offset: number = 0) {
 const hours = Array.from({ length: 14 }, (_, i) => i + 8)
 
 const courseColors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-yellow-500', 'bg-pink-500', 'bg-indigo-500', 'bg-orange-500', 'bg-teal-500']
+const bookingColor = 'bg-amber-500'
+const bookingRejectedColor = 'bg-red-400'
 
 interface CourseData {
   id: number
@@ -49,6 +51,9 @@ interface CourseData {
   students: string
   status: string
   hasLesson?: boolean
+  isBooking?: boolean
+  bookingStatus?: string
+  rejectReason?: string
 }
 
 interface Child {
@@ -63,6 +68,7 @@ export default function ParentCoursesPage() {
   const user = useUserStore((s) => s.user)
   const [weekOffset, setWeekOffset] = React.useState(0)
   const [courses, setCourses] = React.useState<CourseData[]>([])
+  const [bookings, setBookings] = React.useState<CourseData[]>([])
   const [loading, setLoading] = React.useState(false)
   const [children, setChildren] = React.useState<Child[]>([])
   const [selectedChildId, setSelectedChildId] = React.useState<number | null>(null)
@@ -83,6 +89,9 @@ export default function ParentCoursesPage() {
   const touchStartY = React.useRef(0)
   const touchStartTime = React.useRef(0)
   const calendarRef = React.useRef<HTMLDivElement>(null)
+
+  // 合并课程和预约用于显示
+  const allCourses = React.useMemo(() => [...courses, ...bookings], [courses, bookings])
 
   const weekDates = React.useMemo(() => getWeekDates(weekOffset), [weekOffset])
   const dayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
@@ -169,7 +178,7 @@ export default function ParentCoursesPage() {
     }
   }, [children, selectedChildId, searchParams])
 
-  // 加载课程
+  // 加载课程和预约
   const loadCourses = React.useCallback(async () => {
     if (!selectedChildId) return
     setLoading(true)
@@ -177,9 +186,47 @@ export default function ParentCoursesPage() {
       const dates = getWeekDates(weekOffset)
       const startDate = getLocalDateStr(dates[0])
       const endDate = getLocalDateStr(dates[6])
-      const res = await authFetch(`/api/courses?startDate=${startDate}&endDate=${endDate}&studentId=${selectedChildId}`)
-      const data = await res.json()
-      setCourses(data)
+
+      // 并行加载课程和预约
+      const [courseRes, bookingRes] = await Promise.all([
+        authFetch(`/api/courses?startDate=${startDate}&endDate=${endDate}&studentId=${selectedChildId}`),
+        authFetch(`/api/bookings?status=pending`)
+      ])
+
+      const courseData = await courseRes.json()
+      setCourses(courseData)
+
+      // 处理预约数据，过滤出当前孩子且在日期范围内的预约
+      if (bookingRes.ok) {
+        const bookingData = await bookingRes.json()
+        const filteredBookings = bookingData
+          .filter((b: any) => {
+            const bookingDate = new Date(b.date)
+            const bookingDateStr = getLocalDateStr(bookingDate)
+            return b.studentId === selectedChildId &&
+              bookingDateStr >= startDate &&
+              bookingDateStr <= endDate
+          })
+          .map((b: any) => {
+            const bookingDate = new Date(b.date)
+            const dateStr = getLocalDateStr(bookingDate)
+            return {
+              id: b.id,
+              subject: b.subject?.name || '未指定',
+              coach: b.coach?.name || '未知',
+              campus: '-',
+              date: dateStr,
+              startTime: b.startTime,
+              endTime: b.endTime,
+              students: '',
+              status: b.status,
+              isBooking: true,
+              bookingStatus: b.status,
+              rejectReason: b.rejectReason || undefined,
+            }
+          })
+        setBookings(filteredBookings)
+      }
     } catch (e) {
       console.error('加载课程失败:', e)
     } finally {
@@ -248,6 +295,11 @@ export default function ParentCoursesPage() {
 
   const coachStudentColorMap = React.useRef(new Map<string, number>())
   const getCourseColor = (course: CourseData) => {
+    // 预约使用特殊颜色
+    if (course.isBooking) {
+      if (course.bookingStatus === 'rejected') return bookingRejectedColor
+      return bookingColor
+    }
     const key = `${course.coach}-${course.students || ''}`
     if (!coachStudentColorMap.current.has(key)) {
       const size = coachStudentColorMap.current.size
@@ -360,6 +412,12 @@ export default function ParentCoursesPage() {
                   const y = e.clientY - rect.top
                   const hourIdx = Math.floor(y / HOUR_HEIGHT)
                   const hour = hours[hourIdx] || hours[0]
+
+                  // 检查是否是过去的时间，过去的时间不能预约
+                  const now = new Date()
+                  const clickedDateTime = new Date(dateStr + 'T' + `${String(hour).padStart(2, '0')}:00:00`)
+                  if (clickedDateTime < now) return
+
                   setBookDefaultDate(dateStr)
                   setBookDefaultTime(`${String(hour).padStart(2, '0')}:00`)
                   setBookDialogOpen(true)
@@ -381,15 +439,18 @@ export default function ParentCoursesPage() {
                   const pos = layout.get(course.id) || { left: 0, width: 100 }
                   const top = getCourseTop(course)
                   const height = getCourseHeight(course)
+                  const isBooking = course.isBooking
 
                   return (
                     <div
-                      key={course.id}
+                      key={`${isBooking ? 'booking' : 'course'}-${course.id}`}
                       data-course-id={course.id}
                       className={`absolute text-white text-[10px] leading-tight rounded cursor-pointer hover:opacity-90 transition-opacity overflow-hidden ${
-                        course.hasLesson
-                          ? `${getCourseColor(course)} opacity-50 ring-2 ring-white/50`
-                          : getCourseColor(course)
+                        isBooking
+                          ? `${getCourseColor(course)} border-2 border-dashed border-white/70`
+                          : course.hasLesson
+                            ? `${getCourseColor(course)} opacity-50 ring-2 ring-white/50`
+                            : getCourseColor(course)
                       }`}
                       style={{
                         top: `${top}px`,
@@ -400,15 +461,20 @@ export default function ParentCoursesPage() {
                       onClick={() => {
                         setSelectedCourse(course)
                         setDetailDialogOpen(true)
-                        checkCourseRecorded(course.id)
+                        if (!isBooking) checkCourseRecorded(course.id)
                       }}
                     >
                       <div className="font-medium truncate px-0.5">{course.subject}</div>
                       <div className="opacity-80 truncate px-0.5">{course.coach}</div>
-                      {pos.width > 30 && course.students && (
+                      {isBooking && pos.width > 25 && (
+                        <div className="opacity-90 truncate px-0.5 font-medium">
+                          {course.bookingStatus === 'pending' ? '待确认' : course.bookingStatus === 'rejected' ? '已拒绝' : '预约'}
+                        </div>
+                      )}
+                      {!isBooking && pos.width > 30 && course.students && (
                         <div className="opacity-70 truncate px-0.5">{course.students}</div>
                       )}
-                      {course.hasLesson && pos.width > 25 && (
+                      {!isBooking && course.hasLesson && pos.width > 25 && (
                         <div className="absolute top-0.5 right-0.5">
                           <Check className="h-3 w-3" />
                         </div>
@@ -535,12 +601,12 @@ export default function ParentCoursesPage() {
                 : 'translateX(0)',
             }}
           >
-            {renderCalendarGrid(weekDates, courses)}
+            {renderCalendarGrid(weekDates, allCourses)}
           </div>
           {loading && (
             <div className="text-center py-4 text-sm text-gray-500">加载中...</div>
           )}
-          {!loading && courses.length === 0 && selectedChildId && (
+          {!loading && allCourses.length === 0 && selectedChildId && (
             <div className="text-center py-8 text-sm text-gray-500">本周暂无课程安排</div>
           )}
           {!selectedChildId && children.length === 0 && !loading && (
@@ -555,7 +621,16 @@ export default function ParentCoursesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {selectedCourse?.subject}
-              {selectedCourse?.hasLesson && (
+              {selectedCourse?.isBooking ? (
+                <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${
+                  selectedCourse?.bookingStatus === 'pending' ? 'bg-amber-100 text-amber-700' :
+                  selectedCourse?.bookingStatus === 'rejected' ? 'bg-red-100 text-red-700' :
+                  'bg-green-100 text-green-700'
+                }`}>
+                  {selectedCourse?.bookingStatus === 'pending' ? '待确认' :
+                   selectedCourse?.bookingStatus === 'rejected' ? '已拒绝' : '已确认'}
+                </span>
+              ) : selectedCourse?.hasLesson && (
                 <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                   已记录
                 </span>
@@ -572,20 +647,28 @@ export default function ParentCoursesPage() {
                 <span className="text-gray-500">教练</span>
                 <span>{selectedCourse.coach}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">校区</span>
-                <span>{selectedCourse.campus}</span>
-              </div>
+              {!selectedCourse.isBooking && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">校区</span>
+                  <span>{selectedCourse.campus}</span>
+                </div>
+              )}
               {selectedCourse.students && (
                 <div className="flex justify-between">
                   <span className="text-gray-500">学员</span>
                   <span>{selectedCourse.students}</span>
                 </div>
               )}
-              {courseRecorded && (
+              {!selectedCourse.isBooking && courseRecorded && (
                 <div className="flex items-center gap-1 text-green-600 text-xs mt-1">
                   <Check className="h-3 w-3" />
                   <span>已记录课时</span>
+                </div>
+              )}
+              {selectedCourse.isBooking && selectedCourse.bookingStatus === 'rejected' && selectedCourse.rejectReason && (
+                <div className="bg-red-50 rounded-md p-3 mt-2">
+                  <p className="text-sm font-medium text-red-700 mb-1">拒绝原因</p>
+                  <p className="text-sm text-red-600">{selectedCourse.rejectReason}</p>
                 </div>
               )}
             </div>

@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import {
   Home, Calendar, Timer, BarChart3, Settings, Users, Building2,
   MapPin, BookOpen, GraduationCap, DollarSign, ChevronDown, ChevronLeft,
-  MessageSquare, CalendarPlus, User, Bell
+  MessageSquare, CalendarPlus, User, Bell, ClipboardCheck
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUserStore } from '@/stores/user-store'
@@ -38,11 +38,13 @@ const parentMenuItems = [
   { icon: Calendar, label: '课程查看', href: '/parent/courses' },
   { icon: Users, label: '孩子管理', href: '/parent/children' },
   { icon: BarChart3, label: '学习统计', href: '/student/stats' },
+  { icon: User, label: '个人中心', href: '/profile' },
 ]
 
 // 兼职教练角色专属菜单
 const partTimeCoachMenuItems = [
   { icon: Calendar, label: '排课管理', href: '/schedule' },
+  { icon: ClipboardCheck, label: '预约管理', href: '/schedule/bookings' },
   { icon: Timer, label: '课时记录', href: '/lessons' },
   { icon: BarChart3, label: '课时统计', href: '/statistics' },
   { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
@@ -52,6 +54,7 @@ const partTimeCoachMenuItems = [
 // 全职教练角色菜单（不能访问系统管理，无学员管理权限）
 const fullTimeCoachMenuItems = [
   { icon: Calendar, label: '排课管理', href: '/schedule' },
+  { icon: ClipboardCheck, label: '预约管理', href: '/schedule/bookings' },
   { icon: Timer, label: '课时记录', href: '/lessons' },
   { icon: BarChart3, label: '课时统计', href: '/statistics' },
   { icon: BookOpen, label: '科目管理', href: '/admin/subjects' },
@@ -60,6 +63,7 @@ const fullTimeCoachMenuItems = [
 // 管理员角色菜单（club_admin + super_admin）
 const adminMenuItems = [
   { icon: Calendar, label: '排课管理', href: '/schedule' },
+  { icon: ClipboardCheck, label: '预约管理', href: '/schedule/bookings' },
   { icon: Timer, label: '课时记录', href: '/lessons' },
   { icon: BarChart3, label: '课时统计', href: '/statistics' },
 ]

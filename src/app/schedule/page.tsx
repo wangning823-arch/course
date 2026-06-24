@@ -2,13 +2,14 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Plus, Trash2, Edit, Clock, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, Edit, Clock, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
 import { ClubSelector } from '@/components/club-selector'
 import { authFetch } from '@/lib/fetch-client'
 import { useUserStore } from '@/stores/user-store'
@@ -47,6 +48,15 @@ const statusMap: Record<string, { label: string; variant: 'default' | 'success' 
 }
 
 const courseColors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-yellow-500', 'bg-pink-500', 'bg-indigo-500', 'bg-orange-500', 'bg-teal-500']
+const bookingColor = 'bg-amber-500'
+const bookingRejectedColor = 'bg-red-400'
+
+const bookingStatusConfig: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'destructive' | 'secondary' }> = {
+  pending: { label: '待确认', variant: 'warning' },
+  confirmed: { label: '已确认', variant: 'success' },
+  cancelled: { label: '已取消', variant: 'secondary' },
+  rejected: { label: '已拒绝', variant: 'destructive' },
+}
 
 interface CourseData {
   id: number
@@ -59,6 +69,10 @@ interface CourseData {
   students: string
   status: string
   hasLesson?: boolean
+  isBooking?: boolean
+  bookingStatus?: string
+  rejectReason?: string
+  studentId?: number
 }
 
 interface Subject { id: number; name: string; durationMinutes: number }
@@ -86,6 +100,13 @@ export default function SchedulePage() {
   const [courseRecorded, setCourseRecorded] = React.useState(false)
   const [recording, setRecording] = React.useState(false)
   const [coachFilter, setCoachFilter] = React.useState('all')
+  const [bookings, setBookings] = React.useState<CourseData[]>([])
+
+  // 预约拒绝对话框
+  const [rejectDialogOpen, setRejectDialogOpen] = React.useState(false)
+  const [rejectBooking, setRejectBooking] = React.useState<CourseData | null>(null)
+  const [rejectReason, setRejectReason] = React.useState('')
+  const [rejecting, setRejecting] = React.useState(false)
 
   const role = user?.role || ''
 
@@ -189,7 +210,10 @@ export default function SchedulePage() {
   }
 
   // 渲染日历网格
-  const renderCalendarGrid = (dates: Date[], courseList: CourseData[]) => {
+  const renderCalendarGrid = (dates: Date[], courseList: CourseData[], bookingList: CourseData[] = []) => {
+    // 确保参数是数组
+    const safeCourseList = Array.isArray(courseList) ? courseList : []
+    const safeBookingList = Array.isArray(bookingList) ? bookingList : []
     return (
       <div className="flex" style={{ minHeight: `${hours.length * HOUR_HEIGHT + 40}px` }}>
         {/* 时间列 */}
@@ -209,8 +233,10 @@ export default function SchedulePage() {
         {/* 日列容器 */}
         {dates.map((d, dayIdx) => {
           const dateStr = getLocalDateStr(d)
-          const dayCourses = courseList.filter((c) => c.date === dateStr)
-          const layout = getCourseLayout(dayCourses)
+          const dayCourses = safeCourseList.filter((c) => c.date === dateStr)
+          const dayBookings = safeBookingList.filter((b) => b.date === dateStr)
+          const allItems = [...dayCourses, ...dayBookings]
+          const layout = getCourseLayout(allItems)
 
           return (
             <div key={dayIdx} className="flex-1 relative border-l">
@@ -261,19 +287,22 @@ export default function SchedulePage() {
                   <div className="absolute inset-0 bg-blue-50/20 pointer-events-none" />
                 )}
 
-                {dayCourses.map((course) => {
-                  const pos = layout.get(course.id) || { left: 0, width: 100 }
-                  const top = getCourseTop(course)
-                  const height = getCourseHeight(course)
+                {allItems.map((item) => {
+                  const pos = layout.get(item.id) || { left: 0, width: 100 }
+                  const top = getCourseTop(item)
+                  const height = getCourseHeight(item)
+                  const isBooking = item.isBooking
 
                   return (
                     <div
-                      key={course.id}
-                      data-course-id={course.id}
+                      key={`${isBooking ? 'booking' : 'course'}-${item.id}`}
+                      data-course-id={item.id}
                       className={`absolute text-white text-[10px] leading-tight rounded cursor-pointer hover:opacity-90 transition-opacity overflow-hidden ${
-                        course.hasLesson
-                          ? `${getCourseColor(course)} opacity-50 ring-2 ring-white/50`
-                          : getCourseColor(course)
+                        isBooking
+                          ? `${getBookingColor(item)} border-2 border-dashed border-white/70`
+                          : item.hasLesson
+                            ? `${getCourseColor(item)} opacity-50 ring-2 ring-white/50`
+                            : getCourseColor(item)
                       }`}
                       style={{
                         top: `${top}px`,
@@ -282,17 +311,22 @@ export default function SchedulePage() {
                         width: `calc(${pos.width}% - 2px)`,
                       }}
                       onClick={() => {
-                        setSelectedCourse(course)
+                        setSelectedCourse(item)
                         setDetailDialogOpen(true)
-                        checkCourseRecorded(course.id)
+                        if (!isBooking) checkCourseRecorded(item.id)
                       }}
                     >
-                      <div className="font-medium truncate px-0.5">{course.subject}</div>
-                      <div className="opacity-80 truncate px-0.5">{course.coach}</div>
-                      {pos.width > 30 && course.students && (
-                        <div className="opacity-70 truncate px-0.5">{course.students}</div>
+                      <div className="font-medium truncate px-0.5">{item.subject}</div>
+                      <div className="opacity-80 truncate px-0.5">{item.coach}</div>
+                      {isBooking && pos.width > 25 && (
+                        <div className="opacity-90 truncate px-0.5 font-medium">
+                          {item.bookingStatus === 'pending' ? '待确认' : item.bookingStatus === 'rejected' ? '已拒绝' : '预约'}
+                        </div>
                       )}
-                      {course.hasLesson && pos.width > 25 && (
+                      {!isBooking && pos.width > 30 && item.students && (
+                        <div className="opacity-70 truncate px-0.5">{item.students}</div>
+                      )}
+                      {!isBooking && item.hasLesson && pos.width > 25 && (
                         <div className="absolute top-0.5 right-0.5">
                           <Check className="h-3 w-3" />
                         </div>
@@ -462,9 +496,52 @@ export default function SchedulePage() {
         }
       }
 
-      const res = await authFetch(url)
-      const data = await res.json()
-      setCourses(data)
+      // 并行加载课程和预约
+      const [courseRes, bookingRes] = await Promise.all([
+        authFetch(url),
+        authFetch('/api/bookings?status=pending')
+      ])
+
+      const courseData = await courseRes.json()
+      setCourses(courseData)
+
+      // 处理预约数据，过滤出在日期范围内的预约
+      if (bookingRes.ok) {
+        const bookingData = await bookingRes.json()
+        const filteredBookings = bookingData
+          .filter((b: any) => {
+            const bookingDate = new Date(b.date)
+            const bookingDateStr = getLocalDateStr(bookingDate)
+            // 过滤日期范围
+            if (bookingDateStr < startDate || bookingDateStr > endDate) return false
+            // 教练只看自己的预约
+            if ((role === 'coach' || role === 'part_time_coach') && user?.id && b.coachId !== user.id) return false
+            // 管理员按俱乐部过滤
+            if (role === 'club_admin' && currentClubId && currentClubId !== 'all' && b.clubId !== parseInt(currentClubId)) return false
+            if (coachFilter !== 'all' && b.coachId !== parseInt(coachFilter)) return false
+            return true
+          })
+          .map((b: any) => {
+            const bookingDate = new Date(b.date)
+            const dateStr = getLocalDateStr(bookingDate)
+            return {
+              id: b.id,
+              subject: b.subject?.name || '未指定',
+              coach: b.coach?.name || '未知',
+              campus: '-',
+              date: dateStr,
+              startTime: b.startTime,
+              endTime: b.endTime,
+              students: b.student?.name || '',
+              status: b.status,
+              isBooking: true,
+              bookingStatus: b.status,
+              rejectReason: b.rejectReason || undefined,
+              studentId: b.studentId,
+            }
+          })
+        setBookings(filteredBookings)
+      }
     } catch (e) {
       console.error('加载课程失败:', e)
     } finally {
@@ -474,6 +551,24 @@ export default function SchedulePage() {
 
   React.useEffect(() => {
     loadCourses()
+  }, [loadCourses])
+
+  // 页面可见时重新加载数据（家长预约后切换到此页面时刷新）
+  React.useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadCourses()
+      }
+    }
+    const handleBookingChanged = () => {
+      loadCourses()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('bookingChanged', handleBookingChanged)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('bookingChanged', handleBookingChanged)
+    }
   }, [loadCourses])
 
   React.useEffect(() => {
@@ -538,6 +633,59 @@ export default function SchedulePage() {
       loadCourses()
     } catch (e) {
       alert('删除失败')
+    }
+  }
+
+  // 确认预约
+  const handleConfirmBooking = async (booking: CourseData) => {
+    try {
+      const res = await authFetch(`/api/bookings/${booking.id}/confirm`, {
+        method: 'PUT',
+      })
+      if (res.ok) {
+        setDetailDialogOpen(false)
+        loadCourses()
+      } else {
+        const data = await res.json()
+        alert(data.error || '确认失败')
+      }
+    } catch (error) {
+      console.error('确认预约失败:', error)
+    }
+  }
+
+  // 打开拒绝对话框
+  const openRejectDialog = (booking: CourseData) => {
+    setRejectBooking(booking)
+    setRejectReason('')
+    setDetailDialogOpen(false)
+    setRejectDialogOpen(true)
+  }
+
+  // 拒绝预约
+  const handleRejectBooking = async () => {
+    if (!rejectBooking || !rejectReason.trim()) return
+    setRejecting(true)
+    try {
+      const res = await authFetch(`/api/bookings/${rejectBooking.id}/reject`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: rejectReason.trim() }),
+      })
+      if (res.ok) {
+        setRejectDialogOpen(false)
+        setRejectBooking(null)
+        setRejectReason('')
+        loadCourses()
+      } else {
+        let msg = '拒绝失败'
+        try { const data = await res.json(); msg = data.error || msg } catch {}
+        alert(msg)
+      }
+    } catch (error) {
+      console.error('拒绝预约失败:', error)
+    } finally {
+      setRejecting(false)
     }
   }
 
@@ -637,6 +785,12 @@ export default function SchedulePage() {
       coachStudentColorMap.current.set(key, size % courseColors.length)
     }
     return courseColors[coachStudentColorMap.current.get(key)!]
+  }
+
+  // 预约颜色
+  const getBookingColor = (booking: CourseData) => {
+    if (booking.bookingStatus === 'rejected') return bookingRejectedColor
+    return bookingColor
   }
 
   // 获取某天课程的并排位置信息
@@ -927,7 +1081,7 @@ export default function SchedulePage() {
                   : 'translateX(0)',
               }}
             >
-              {renderCalendarGrid(getWeekDatesForOffset(prevWeekOffset), prevCourses)}
+              {renderCalendarGrid(getWeekDatesForOffset(prevWeekOffset), prevCourses, [])}
             </div>
           )}
           {/* 新内容（从屏幕外滑入） */}
@@ -940,13 +1094,13 @@ export default function SchedulePage() {
                 : 'translateX(0)',
             }}
           >
-            {renderCalendarGrid(weekDates, courses)}
+            {renderCalendarGrid(weekDates, courses, bookings)}
           </div>
           {loading && (
             <div className="text-center py-4 text-sm text-gray-500">加载中...</div>
           )}
-          {!loading && courses.length === 0 && (
-            <div className="text-center py-8 text-sm text-gray-500">本周暂无课程安排</div>
+          {!loading && courses.length === 0 && bookings.length === 0 && (
+            <div className="text-center py-8 text-sm text-gray-500">本周暂无课程和预约安排</div>
           )}
         </CardContent>
       </Card>
@@ -957,7 +1111,16 @@ export default function SchedulePage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {selectedCourse?.subject}
-              {selectedCourse?.hasLesson && (
+              {selectedCourse?.isBooking ? (
+                <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${
+                  selectedCourse?.bookingStatus === 'pending' ? 'bg-amber-100 text-amber-700' :
+                  selectedCourse?.bookingStatus === 'rejected' ? 'bg-red-100 text-red-700' :
+                  'bg-green-100 text-green-700'
+                }`}>
+                  {selectedCourse?.bookingStatus === 'pending' ? '待确认' :
+                   selectedCourse?.bookingStatus === 'rejected' ? '已拒绝' : '已确认'}
+                </span>
+              ) : selectedCourse?.hasLesson && (
                 <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                   已记录
                 </span>
@@ -974,41 +1137,71 @@ export default function SchedulePage() {
                 <span className="text-gray-500">教练</span>
                 <span>{selectedCourse.coach}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">校区</span>
-                <span>{selectedCourse.campus}</span>
-              </div>
+              {!selectedCourse.isBooking && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">校区</span>
+                  <span>{selectedCourse.campus}</span>
+                </div>
+              )}
               {selectedCourse.students && (
                 <div className="flex justify-between">
                   <span className="text-gray-500">学员</span>
                   <span>{selectedCourse.students}</span>
                 </div>
               )}
-              {courseRecorded && (
+              {!selectedCourse.isBooking && courseRecorded && (
                 <div className="flex items-center gap-1 text-green-600 text-xs mt-1">
                   <Clock className="h-3 w-3" />
                   <span>已记录课时</span>
+                </div>
+              )}
+              {selectedCourse.isBooking && selectedCourse.bookingStatus === 'rejected' && selectedCourse.rejectReason && (
+                <div className="bg-red-50 rounded-md p-3 mt-2">
+                  <p className="text-sm font-medium text-red-700 mb-1">拒绝原因</p>
+                  <p className="text-sm text-red-600">{selectedCourse.rejectReason}</p>
                 </div>
               )}
             </div>
           )}
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>关闭</Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                setDetailDialogOpen(false)
-                setDeleteDialogOpen(true)
-              }}
-            >
-              取消课程
-            </Button>
-            <Button
-              disabled={courseRecorded || recording}
-              onClick={handleRecordLesson}
-            >
-              {recording ? '记录中...' : courseRecorded ? '已记录课时' : '记录课时'}
-            </Button>
+            {selectedCourse?.isBooking && selectedCourse?.bookingStatus === 'pending' && (
+              <>
+                <Button
+                  variant="destructive"
+                  onClick={() => openRejectDialog(selectedCourse)}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  拒绝
+                </Button>
+                <Button
+                  onClick={() => handleConfirmBooking(selectedCourse)}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <Check className="h-4 w-4 mr-1" />
+                  确认
+                </Button>
+              </>
+            )}
+            {!selectedCourse?.isBooking && (
+              <>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    setDetailDialogOpen(false)
+                    setDeleteDialogOpen(true)
+                  }}
+                >
+                  取消课程
+                </Button>
+                <Button
+                  disabled={courseRecorded || recording}
+                  onClick={handleRecordLesson}
+                >
+                  {recording ? '记录中...' : courseRecorded ? '已记录课时' : '记录课时'}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1025,6 +1218,46 @@ export default function SchedulePage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>返回</Button>
             <Button variant="destructive" onClick={handleDelete}>确认取消</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 预约拒绝对话框 */}
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>拒绝预约</DialogTitle>
+            <DialogDescription>
+              请填写拒绝原因，学员/家长将收到通知。
+            </DialogDescription>
+          </DialogHeader>
+          {rejectBooking && (
+            <div className="space-y-3">
+              <div className="bg-gray-50 rounded-md p-3 text-sm space-y-1">
+                <p>学员：{rejectBooking.students}</p>
+                <p>科目：{rejectBooking.subject}</p>
+                <p>时间：{rejectBooking.date} {rejectBooking.startTime}-{rejectBooking.endTime}</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">拒绝原因 <span className="text-red-500">*</span></label>
+                <Textarea
+                  placeholder="请输入拒绝原因，如：该时间段已有其他安排"
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>取消</Button>
+            <Button
+              variant="destructive"
+              onClick={handleRejectBooking}
+              disabled={!rejectReason.trim() || rejecting}
+            >
+              {rejecting ? '提交中...' : '确认拒绝'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -77,6 +77,8 @@ export function NotificationBell() {
         return '✅'
       case 'booking_cancelled':
         return '❌'
+      case 'booking_rejected':
+        return '🚫'
       default:
         return '🔔'
     }
