@@ -11,8 +11,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未授权' }, { status: 401 })
     }
 
-    // 只有管理员可以创建
-    if (!['super_admin', 'club_admin', 'full_time_coach'].includes(authUser.role)) {
+    // 管理员、全职教练、兼职教练都可以创建学员
+    if (!['super_admin', 'club_admin', 'full_time_coach', 'part_time_coach'].includes(authUser.role)) {
       return NextResponse.json({ error: '无权限' }, { status: 403 })
     }
 
@@ -91,14 +91,15 @@ export async function POST(request: NextRequest) {
           },
         })
         userId = newUser.id
+        console.log('用户创建成功:', { userId, phone, name, role: 'student' })
       }
     } else {
       // 未成年学员
       if (existingUser) {
-        // 家长手机号已有用户（可能是教练或管理员），不创建新用户
+        // 家长手机号已有用户，直接关联
         parentId = existingUser.id
       } else {
-        // 家长手机号没有用户，创建家长用户
+        // 家长手机号没有用户，创建家长账号
         if (!password) {
           return NextResponse.json({ error: '该家长手机号没有用户，请设置登录密码' }, { status: 400 })
         }
@@ -106,10 +107,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: '密码至少需要6位' }, { status: 400 })
         }
 
-        // 创建密码哈希
         const passwordHash = await hashPassword(password)
-
-        // 创建家长用户
         const newUser = await prisma.user.create({
           data: {
             phone: parentPhone,
@@ -120,13 +118,49 @@ export async function POST(request: NextRequest) {
           },
         })
         parentId = newUser.id
+        console.log('家长用户创建成功:', { parentId, phone: parentPhone, name: parentName || `${name}的家长` })
       }
+    }
+
+    // 检查是否已有该用户的学员记录（避免重复创建）
+    if (userId) {
+      const existingStudent = await prisma.student.findFirst({
+        where: { userId },
+      })
+      if (existingStudent) {
+        return NextResponse.json({
+          error: `该手机号的学员"${existingStudent.name}"已存在，无需重复创建`,
+        }, { status: 400 })
+      }
+    }
+    if (parentId) {
+      const existingStudent = await prisma.student.findFirst({
+        where: { parentId },
+      })
+      if (existingStudent) {
+        return NextResponse.json({
+          error: `该家长手机号的学员"${existingStudent.name}"已存在，无需重复创建`,
+        }, { status: 400 })
+      }
+    }
+
+    // 验证 clubId 是否有效（如果提供了的话）
+    const parsedClubId = clubId ? parseInt(String(clubId)) : null
+    if (parsedClubId && !isNaN(parsedClubId)) {
+      const clubExists = await prisma.club.findUnique({ where: { id: parsedClubId } })
+      if (!clubExists) {
+        console.error('俱乐部不存在:', parsedClubId)
+        return NextResponse.json({ error: `俱乐部ID ${parsedClubId} 不存在` }, { status: 400 })
+      }
+    } else if (parsedClubId && isNaN(parsedClubId)) {
+      console.error('无效的俱乐部ID:', clubId)
+      return NextResponse.json({ error: '无效的俱乐部ID' }, { status: 400 })
     }
 
     // 创建学员记录
     const student = await prisma.student.create({
       data: {
-        clubId: clubId ? parseInt(clubId) : null,
+        clubId: parsedClubId,
         userId: userId,
         parentId: parentId,
         studentType: studentType || 'adult',
@@ -139,15 +173,30 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    console.log('学员创建成功:', { id: student.id, name, clubId: parsedClubId, userId, parentId })
+
+    // 确定返回消息
+    let message = '学员创建成功'
+    if (studentType === 'adult') {
+      message = existingUser ? '学员创建成功，已关联已有用户' : '学员和登录账号创建成功'
+    } else {
+      message = parentId ? '学员创建成功，已关联家长账号' : '学员创建成功'
+    }
+
     return NextResponse.json({
       success: true,
       student,
-      message: existingUser
-        ? '学员创建成功，已关联已有用户'
-        : '学员和用户创建成功',
+      message,
     }, { status: 201 })
-  } catch (error) {
+  } catch (error: any) {
     console.error('创建学员失败:', error)
-    return NextResponse.json({ error: '创建失败，请稍后重试' }, { status: 500 })
+    console.error('错误详情:', {
+      name: error?.name,
+      message: error?.message,
+      code: error?.code,
+      meta: error?.meta,
+      stack: error?.stack?.split('\n').slice(0, 5),
+    })
+    return NextResponse.json({ error: '创建失败，请稍后重试', detail: error?.message }, { status: 500 })
   }
 }

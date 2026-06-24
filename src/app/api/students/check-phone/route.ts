@@ -10,7 +10,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未授权' }, { status: 401 })
     }
 
-    const { phone } = await request.json()
+    const { phone, purpose } = await request.json()
+    // purpose: 'student' = 检查学员手机号, 'parent' = 检查家长手机号
 
     if (!phone) {
       return NextResponse.json({ error: '请提供手机号' }, { status: 400 })
@@ -32,7 +33,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ exists: false })
     }
 
-    // 定义不能作为学员添加的角色
+    // 家长手机号检查：任何角色都可以作为家长，只需返回用户信息
+    if (purpose === 'parent') {
+      return NextResponse.json({
+        exists: true,
+        canAdd: true,
+        user: existingUser,
+      })
+    }
+
+    // 学员手机号检查
     const nonStudentRoles = ['super_admin', 'club_admin', 'full_time_coach', 'part_time_coach']
 
     if (nonStudentRoles.includes(existingUser.role)) {
@@ -44,7 +54,20 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 可以作为学员添加（已有学员账号）
+    // 检查该用户是否已是学员
+    const existingStudent = await prisma.student.findFirst({
+      where: { userId: existingUser.id },
+    })
+    if (existingStudent) {
+      return NextResponse.json({
+        exists: true,
+        canAdd: false,
+        error: `该手机号已是学员"${existingStudent.name}"的登录账号，不能重复添加`,
+        user: existingUser,
+      })
+    }
+
+    // 可以作为学员添加（已有用户账号但不是学员）
     return NextResponse.json({
       exists: true,
       canAdd: true,

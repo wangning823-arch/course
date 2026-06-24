@@ -43,7 +43,21 @@ export function Header({ marginLeft, onMenuClick, isMobile }: HeaderProps) {
   const logout = useUserStore((s) => s.logout)
   const currentTitle = titleMap[pathname] || ''
 
-  const userName = user?.name || '管理员'
+  const userName = user?.name || '用户'
+
+  // 根据角色显示不同颜色和文字
+  const roleConfig: Record<string, { label: string; char: string; color: string }> = {
+    super_admin: { label: '超级管理员', char: '超', color: 'bg-red-500' },
+    club_admin: { label: '管理员', char: '管', color: 'bg-blue-500' },
+    admin: { label: '管理员', char: '管', color: 'bg-blue-500' },
+    full_time_coach: { label: '全职教练', char: '教', color: 'bg-green-500' },
+    part_time_coach: { label: '兼职教练', char: '教', color: 'bg-teal-500' },
+    coach: { label: '教练', char: '教', color: 'bg-green-500' },
+    parent: { label: '家长', char: '家', color: 'bg-orange-500' },
+    student: { label: '学员', char: '学', color: 'bg-purple-500' },
+  }
+  const role = user?.role || ''
+  const config = roleConfig[role] || { label: '用户', char: '用', color: 'bg-gray-500' }
 
   const handleLogout = () => {
     logout()
@@ -77,9 +91,12 @@ export function Header({ marginLeft, onMenuClick, isMobile }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
               <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-blue-500 text-white text-sm">管</AvatarFallback>
+                <AvatarFallback className={`${config.color} text-white text-sm`}>{config.char}</AvatarFallback>
               </Avatar>
-              <span className="text-sm text-gray-700 hidden sm:inline">{userName}</span>
+              <div className="hidden sm:flex flex-col items-start">
+                <span className="text-sm text-gray-700 leading-tight">{userName}</span>
+                <span className="text-xs text-gray-400 leading-tight">{config.label}</span>
+              </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">

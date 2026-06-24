@@ -272,8 +272,8 @@ export default function SchedulePage() {
                       data-course-id={course.id}
                       className={`absolute text-white text-[10px] leading-tight rounded cursor-pointer hover:opacity-90 transition-opacity overflow-hidden ${
                         course.hasLesson
-                          ? `${getCourseColor(course.id)} opacity-70 ring-2 ring-white/50`
-                          : getCourseColor(course.id)
+                          ? `${getCourseColor(course)} opacity-50 ring-2 ring-white/50`
+                          : getCourseColor(course)
                       }`}
                       style={{
                         top: `${top}px`,
@@ -594,8 +594,29 @@ export default function SchedulePage() {
     })
   }
 
-  // 每小时高度（px）
-  const HOUR_HEIGHT = 48
+  // 每小时高度（px）- 根据屏幕大小调整
+  const [hourHeight, setHourHeight] = React.useState(24)
+
+  React.useEffect(() => {
+    const updateHeight = () => {
+      const isMobile = window.innerWidth < 768
+      if (isMobile) {
+        // 手机：计算可用高度，让日历占满屏幕
+        const screenHeight = window.innerHeight
+        const headerHeight = 120 // 顶部导航和周导航的高度
+        const availableHeight = screenHeight - headerHeight
+        // 14个小时 (8:00-21:00) + 表头 40px
+        setHourHeight(Math.floor((availableHeight - 40) / 14))
+      } else {
+        setHourHeight(48)
+      }
+    }
+    updateHeight()
+    window.addEventListener('resize', updateHeight)
+    return () => window.removeEventListener('resize', updateHeight)
+  }, [])
+
+  const HOUR_HEIGHT = hourHeight
 
   // 计算课程顶部偏移（从 hours 起始时间算起）
   const getCourseTop = (course: CourseData) => {
@@ -616,9 +637,15 @@ export default function SchedulePage() {
     return a.startTime < b.endTime && b.startTime < a.endTime
   }
 
-  // 根据课程 ID 分配颜色
-  const getCourseColor = (courseId: number) => {
-    return courseColors[courseId % courseColors.length]
+  // 根据教练-学员组合分配颜色（相同组合使用相同颜色）
+  const coachStudentColorMap = React.useRef(new Map<string, number>())
+  const getCourseColor = (course: CourseData) => {
+    const key = `${course.coach}-${course.students || ''}`
+    if (!coachStudentColorMap.current.has(key)) {
+      const size = coachStudentColorMap.current.size
+      coachStudentColorMap.current.set(key, size % courseColors.length)
+    }
+    return courseColors[coachStudentColorMap.current.get(key)!]
   }
 
   // 获取某天课程的并排位置信息

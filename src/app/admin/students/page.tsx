@@ -4,7 +4,6 @@ import * as React from 'react'
 import { Plus, Edit, Trash2, Search, RefreshCw, UserCheck, UserX, Users, Lock, User, Key, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -28,6 +27,7 @@ export default function StudentsPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [formData, setFormData] = React.useState({ name: '', phone: '', gender: '1', parentName: '', parentPhone: '' })
   const [editId, setEditId] = React.useState<number | null>(null)
+  const [editStudentType, setEditStudentType] = React.useState<'adult' | 'minor'>('adult')
   const [coaches, setCoaches] = React.useState<Coach[]>([])
   const [coachClubs, setCoachClubs] = React.useState<Club[]>([])
   const [selectedClubId, setSelectedClubId] = React.useState<string>('')
@@ -147,7 +147,7 @@ export default function StudentsPage() {
   }, [currentClubId, fetchStudents, fetchCoaches])
 
   // 检查手机号是否已有用户
-  const checkPhone = React.useCallback(async (phone: string, isAdult: boolean) => {
+  const checkPhone = React.useCallback(async (phone: string, purpose: 'student' | 'parent' = 'student') => {
     if (!phone || phone.length < 11) {
       setPhoneCheckResult({ checking: false, exists: false, canAdd: true, error: null, user: null })
       return
@@ -159,7 +159,7 @@ export default function StudentsPage() {
       const res = await authFetch('/api/students/check-phone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone, purpose }),
       })
 
       if (!res.ok) {
@@ -170,10 +170,8 @@ export default function StudentsPage() {
       const data = await res.json()
 
       if (!data.exists) {
-        // 手机号没有用户，需要创建
         setPhoneCheckResult({ checking: false, exists: false, canAdd: true, error: null, user: null })
       } else if (data.canAdd) {
-        // 手机号已有用户且可以关联
         setPhoneCheckResult({
           checking: false,
           exists: true,
@@ -182,12 +180,11 @@ export default function StudentsPage() {
           user: data.user,
         })
       } else {
-        // 手机号是教练或管理员，不能添加
         setPhoneCheckResult({
           checking: false,
           exists: true,
           canAdd: false,
-          error: data.error || '该手机号不能作为学员添加',
+          error: data.error || '该手机号不能使用',
           user: data.user,
         })
       }
@@ -206,11 +203,21 @@ export default function StudentsPage() {
     }
 
     const timer = setTimeout(() => {
-      checkPhone(phone, createStudentType === 'adult')
+      checkPhone(phone, createStudentType === 'adult' ? 'student' : 'parent')
     }, 500)
 
     return () => clearTimeout(timer)
   }, [createStudentForm.phone, createStudentForm.parentPhone, createStudentType, checkPhone])
+
+  // 未成年学员：家长手机号有账号时自动填充家长姓名
+  React.useEffect(() => {
+    if (createStudentType === 'minor' && phoneCheckResult.exists && phoneCheckResult.user) {
+      setCreateStudentForm(prev => ({
+        ...prev,
+        parentName: prev.parentName || phoneCheckResult.user.name,
+      }))
+    }
+  }, [phoneCheckResult, createStudentType])
 
   const handleSubmit = async () => {
     try {
@@ -283,7 +290,8 @@ export default function StudentsPage() {
       parentName: student.parentName || '',
       parentPhone: student.parentPhone || '',
     })
-    // 判断学员类型
+    setEditStudentType(student.studentType || 'adult')
+    // 判断学员归属类型
     if (!student.clubId) {
       setStudentType('solo')
     } else if (student.coachId) {
@@ -359,8 +367,12 @@ export default function StudentsPage() {
       return
     }
 
-    // 如果手机号没有用户，需要验证密码
-    if (!phoneCheckResult.exists) {
+    // 需要创建账号时验证密码
+    // 成年学员：手机号没有用户时需要密码
+    // 未成年学员：家长没有账号时需要密码
+    const needPassword = (createStudentType === 'adult' && !phoneCheckResult.exists) ||
+      (createStudentType === 'minor' && !(phoneCheckResult.exists && phoneCheckResult.canAdd))
+    if (needPassword) {
       if (!createStudentForm.password) {
         alert('请输入登录密码')
         return
@@ -460,34 +472,35 @@ export default function StudentsPage() {
   }, [students, typeFilter])
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold">
-          {(role === 'coach' || role === 'part_time_coach') ? '我的学员' : role === 'super_admin' ? '学员查看' : '学员管理'}
-        </h1>
-        <div className="flex items-center gap-2">
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl sm:text-2xl font-bold">
+            {(role === 'coach' || role === 'part_time_coach') ? '我的学员' : role === 'super_admin' ? '学员查看' : '学员管理'}
+          </h1>
+          {canAddStudent && (
+            <Button onClick={() => setCreateStudentDialogOpen(true)} size="sm">
+              <UserPlus className="h-4 w-4 mr-1" />添加
+            </Button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <ClubSelector />
-          <Button variant="outline" onClick={fetchStudents}>
-            <RefreshCw className="h-4 w-4 mr-1" />
+          <Button variant="outline" size="sm" onClick={fetchStudents}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1" />
             刷新
           </Button>
-          {canAddStudent && (
-            <>
-              <Button onClick={() => setCreateStudentDialogOpen(true)}>
-                <UserPlus className="h-4 w-4 mr-1" />添加学员
-              </Button>
-            </>
-          )}
         </div>
       </div>
 
       {/* 学员类型筛选 */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-500">学员类型：</span>
+      <div className="flex items-center gap-1.5 overflow-x-auto">
+        <span className="text-xs text-gray-500 shrink-0">类型：</span>
         <div className="flex gap-1">
           <Button
             variant={typeFilter === 'all' ? 'default' : 'outline'}
             size="sm"
+            className="h-7 text-xs px-2"
             onClick={() => setTypeFilter('all')}
           >
             全部
@@ -495,45 +508,50 @@ export default function StudentsPage() {
           <Button
             variant={typeFilter === 'adult' ? 'default' : 'outline'}
             size="sm"
+            className="h-7 text-xs px-2"
             onClick={() => setTypeFilter('adult')}
           >
-            成年学员
+            成年
           </Button>
           <Button
             variant={typeFilter === 'minor' ? 'default' : 'outline'}
             size="sm"
+            className="h-7 text-xs px-2"
             onClick={() => setTypeFilter('minor')}
           >
-            未成年学员
+            未成年
           </Button>
         </div>
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-gray-400" />
+            <Search className="h-4 w-4 text-gray-400 shrink-0" />
             <Input
-              placeholder="搜索姓名、手机号、家长..."
+              placeholder="搜索姓名、手机号..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
+              className="w-full"
             />
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-2">
           {loading ? (
             <div className="p-8 text-center text-gray-500">加载中...</div>
           ) : students.length === 0 ? (
             <div className="p-8 text-center text-gray-500">暂无数据</div>
           ) : typeFilter === 'minor' && groupedStudents ? (
             // 未成年学员按家庭分组显示
-            <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="text-xs text-gray-500 px-1">
+                共 {students.length} 名学员，{groupedStudents.families.length} 个家庭
+              </div>
               {groupedStudents.families.map((family, index) => (
-                <div key={index} className="border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
+                <div key={index} className="border rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <Users className="h-5 w-5 text-blue-500" />
+                      <Users className="h-4 w-4 text-blue-500" />
                       <span className="font-medium">家长：{family.parentName}</span>
                       <span className="text-sm text-gray-500">（{family.parentPhone}）</span>
                       <Badge variant="outline">{family.students.length}名学员</Badge>
@@ -552,32 +570,19 @@ export default function StudentsPage() {
                               {new Date(student.birthDate).getFullYear()}年生
                             </span>
                           )}
-                          {student.userId ? (
+                          {student.parentId ? (
                             <Badge variant="default" className="text-xs bg-green-100 text-green-700">
-                              <Key className="h-3 w-3 mr-1" />
-                              已创建账号
+                              <User className="h-3 w-3 mr-1" />
+                              已关联家长
                             </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs">未创建账号</Badge>
-                          )}
+                          ) : student.parentPhone ? (
+                            <Badge variant="outline" className="text-xs">有家长信息</Badge>
+                          ) : null}
                         </div>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="sm" onClick={() => handleEdit(student)}>
                             <Edit className="h-4 w-4" />
                           </Button>
-                          {!student.userId && canManage && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setCreateAccountStudent(student)
-                                setAccountPassword('')
-                                setCreateAccountDialogOpen(true)
-                              }}
-                            >
-                              <UserPlus className="h-4 w-4" />
-                            </Button>
-                          )}
                         </div>
                       </div>
                     ))}
@@ -598,32 +603,17 @@ export default function StudentsPage() {
                           <span className="text-sm text-gray-500">
                             {student.gender === 1 ? '男' : student.gender === 2 ? '女' : '-'}
                           </span>
-                          {student.userId ? (
+                          {student.parentId ? (
                             <Badge variant="default" className="text-xs bg-green-100 text-green-700">
-                              <Key className="h-3 w-3 mr-1" />
-                              已创建账号
+                              <User className="h-3 w-3 mr-1" />
+                              已关联家长
                             </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs">未创建账号</Badge>
-                          )}
+                          ) : null}
                         </div>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="sm" onClick={() => handleEdit(student)}>
                             <Edit className="h-4 w-4" />
                           </Button>
-                          {!student.userId && canManage && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setCreateAccountStudent(student)
-                                setAccountPassword('')
-                                setCreateAccountDialogOpen(true)
-                              }}
-                            >
-                              <UserPlus className="h-4 w-4" />
-                            </Button>
-                          )}
                         </div>
                       </div>
                     ))}
@@ -632,73 +622,72 @@ export default function StudentsPage() {
               )}
             </div>
           ) : (
-            // 成年学员或全部学员平铺显示
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>姓名</TableHead>
-                    <TableHead>性别</TableHead>
-                    <TableHead>手机号</TableHead>
-                    <TableHead className="hidden sm:table-cell">家长姓名</TableHead>
-                    <TableHead className="hidden sm:table-cell">家长手机</TableHead>
-                    <TableHead>账号状态</TableHead>
-                    {isAdmin && <TableHead>归属</TableHead>}
-                    {(canManage || canEditOwn) && <TableHead>操作</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {students.map((student) => (
-                    <TableRow key={student.id}>
-                      <TableCell className="font-medium">{student.name}</TableCell>
-                      <TableCell>{student.gender === 1 ? '男' : student.gender === 2 ? '女' : '-'}</TableCell>
-                      <TableCell>{student.phone || '-'}</TableCell>
-                      <TableCell className="hidden sm:table-cell">{student.parentName || '-'}</TableCell>
-                      <TableCell className="hidden sm:table-cell">{student.parentPhone || '-'}</TableCell>
-                      <TableCell>
-                        {student.userId ? (
-                          <Badge variant="default" className="text-xs bg-green-100 text-green-700">
-                            <Key className="h-3 w-3 mr-1" />
-                            已创建
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-xs">未创建</Badge>
-                        )}
-                      </TableCell>
-                      {isAdmin && (
-                        <TableCell>
-                          {!student.clubId ? (
-                            <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">
-                              <User className="h-3 w-3 mr-1" />
-                              纯私有
-                            </Badge>
-                          ) : student.coach ? (
-                            <div className="flex items-center gap-1">
+            <>
+              <div className="text-xs text-gray-500 px-1 mb-1">
+                共 {students.length} 名学员
+              </div>
+
+              {/* 桌面端：表格列表 */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-gray-500">
+                      <th className="py-2 px-2 font-medium">姓名</th>
+                      <th className="py-2 px-2 font-medium">性别</th>
+                      <th className="py-2 px-2 font-medium">手机号</th>
+                      {isAdmin && <th className="py-2 px-2 font-medium">归属</th>}
+                      <th className="py-2 px-2 font-medium">状态</th>
+                      {(canManage || canEditOwn) && <th className="py-2 px-2 font-medium text-right">操作</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.map((student) => (
+                      <tr key={student.id} className="border-b last:border-b-0 hover:bg-gray-50">
+                        <td className="py-2 px-2 font-medium">{student.name}</td>
+                        <td className="py-2 px-2 text-gray-500">
+                          {student.gender === 1 ? '男' : student.gender === 2 ? '女' : '-'}
+                        </td>
+                        <td className="py-2 px-2 text-gray-500">{student.phone || '-'}</td>
+                        {isAdmin && (
+                          <td className="py-2 px-2">
+                            {!student.clubId ? (
+                              <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">纯私有</Badge>
+                            ) : student.coach ? (
                               <Badge variant="secondary" className="text-xs">
                                 <UserCheck className="h-3 w-3 mr-1" />
                                 {student.coach.name}
                               </Badge>
-                              {canManage && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-1 text-xs"
-                                  onClick={() => handleAssign(student.id, null)}
-                                  title="设为共享"
-                                >
-                                  <UserX className="h-3 w-3" />
-                                </Button>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1">
+                            ) : (
                               <Badge variant="outline" className="text-xs">共享</Badge>
-                              {canManage && (
-                                <Select
-                                  onValueChange={(v) => handleAssign(student.id, parseInt(v))}
-                                >
-                                  <SelectTrigger className="h-6 w-auto px-2 text-xs border-dashed">
-                                    <SelectValue placeholder="分配教练" />
+                            )}
+                          </td>
+                        )}
+                        <td className="py-2 px-2">
+                          {student.studentType === 'adult' ? (
+                            student.userId ? (
+                              <Badge variant="default" className="text-xs bg-green-100 text-green-700">
+                                <Key className="h-3 w-3 mr-1" />已创建账号
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">未创建账号</Badge>
+                            )
+                          ) : (
+                            student.parentId ? (
+                              <Badge variant="default" className="text-xs bg-green-100 text-green-700">
+                                <User className="h-3 w-3 mr-1" />已关联家长
+                              </Badge>
+                            ) : student.parentPhone ? (
+                              <Badge variant="outline" className="text-xs">有家长信息</Badge>
+                            ) : null
+                          )}
+                        </td>
+                        {(canManage || canEditOwn) && (
+                          <td className="py-2 px-2 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {isAdmin && student.clubId && !student.coach && canManage && (
+                                <Select onValueChange={(v) => handleAssign(student.id, parseInt(v))}>
+                                  <SelectTrigger className="h-7 text-xs border-dashed w-24">
+                                    <SelectValue placeholder="分配" />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {coaches.map((c) => (
@@ -707,40 +696,161 @@ export default function StudentsPage() {
                                   </SelectContent>
                                 </Select>
                               )}
+                              {isAdmin && student.coach && canManage && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs text-gray-500"
+                                  onClick={() => handleAssign(student.id, null)}
+                                >
+                                  <UserX className="h-3 w-3 mr-1" />取消私有
+                                </Button>
+                              )}
+                              {(canManage || (canEditOwn && student.coach?.id === userId)) && (
+                                <>
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEdit(student)}>
+                                    <Edit className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500" onClick={() => handleDelete(student.id)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                  {!student.userId && canManage && student.studentType !== 'minor' && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => {
+                                        setCreateAccountStudent(student)
+                                        setAccountPassword('')
+                                        setCreateAccountDialogOpen(true)
+                                      }}
+                                    >
+                                      <UserPlus className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </>
+                              )}
                             </div>
-                          )}
-                        </TableCell>
-                      )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 手机端：卡片式 */}
+              <div className="sm:hidden grid grid-cols-1 gap-3">
+                {students.map((student) => (
+                  <div
+                    key={student.id}
+                    className="border rounded-lg p-3 space-y-2 hover:shadow-sm transition-shadow"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-base">{student.name}</span>
+                        <span className="text-sm text-gray-500">
+                          {student.gender === 1 ? '男' : student.gender === 2 ? '女' : ''}
+                        </span>
+                      </div>
                       {(canManage || (canEditOwn && student.coach?.id === userId)) && (
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => handleEdit(student)}>
-                              <Edit className="h-4 w-4" />
+                        <div className="flex gap-0.5">
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleEdit(student)}>
+                            <Edit className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500" onClick={() => handleDelete(student.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                          {!student.userId && canManage && student.studentType !== 'minor' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                setCreateAccountStudent(student)
+                                setAccountPassword('')
+                                setCreateAccountDialogOpen(true)
+                              }}
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(student.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                            {!student.userId && canManage && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setCreateAccountStudent(student)
-                                  setAccountPassword('')
-                                  setCreateAccountDialogOpen(true)
-                                }}
-                              >
-                                <UserPlus className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
+                          )}
+                        </div>
                       )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      {student.phone && <div className="text-gray-600">{student.phone}</div>}
+                      {student.parentName && (
+                        <div className="text-gray-500">家长：{student.parentName} {student.parentPhone}</div>
+                      )}
+                      {student.birthDate && (
+                        <div className="text-gray-500">{new Date(student.birthDate).getFullYear()}年生</div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {student.studentType === 'adult' ? (
+                        student.userId ? (
+                          <Badge variant="default" className="text-xs bg-green-100 text-green-700">
+                            <Key className="h-3 w-3 mr-1" />已创建账号
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">未创建账号</Badge>
+                        )
+                      ) : (
+                        student.parentId ? (
+                          <Badge variant="default" className="text-xs bg-green-100 text-green-700">
+                            <User className="h-3 w-3 mr-1" />已关联家长
+                          </Badge>
+                        ) : student.parentPhone ? (
+                          <Badge variant="outline" className="text-xs">有家长信息</Badge>
+                        ) : null
+                      )}
+                      {isAdmin && (
+                        <>
+                          {!student.clubId ? (
+                            <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">
+                              <User className="h-3 w-3 mr-1" />纯私有
+                            </Badge>
+                          ) : student.coach ? (
+                            <Badge variant="secondary" className="text-xs">
+                              <UserCheck className="h-3 w-3 mr-1" />{student.coach.name}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">共享</Badge>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    {isAdmin && student.clubId && !student.coach && canManage && (
+                      <div className="pt-1">
+                        <Select onValueChange={(v) => handleAssign(student.id, parseInt(v))}>
+                          <SelectTrigger className="h-7 text-xs border-dashed">
+                            <SelectValue placeholder="分配教练" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {coaches.map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {isAdmin && student.coach && canManage && (
+                      <div className="pt-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-gray-500"
+                          onClick={() => handleAssign(student.id, null)}
+                        >
+                          <UserX className="h-3 w-3 mr-1" />取消私有
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -754,9 +864,9 @@ export default function StudentsPage() {
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>创建学员用户</DialogTitle>
+            <DialogTitle>添加学员</DialogTitle>
             <DialogDescription>
-              同时创建学员信息和登录账号
+              {createStudentType === 'adult' ? '创建学员信息和登录账号' : '创建学员信息，关联家长账号'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -819,7 +929,7 @@ export default function StudentsPage() {
                     <p className="text-xs text-gray-500">检查中...</p>
                   )}
                   {!phoneCheckResult.checking && phoneCheckResult.exists && phoneCheckResult.canAdd && (
-                    <p className="text-xs text-green-600">该用户已是系统用户，将自动关联</p>
+                    <p className="text-xs text-green-600">该手机号已有账号，将自动关联家长</p>
                   )}
                   {!phoneCheckResult.checking && !phoneCheckResult.canAdd && phoneCheckResult.error && (
                     <p className="text-xs text-red-500">{phoneCheckResult.error}</p>
@@ -831,6 +941,8 @@ export default function StudentsPage() {
                     placeholder="请输入家长姓名"
                     value={createStudentForm.parentName}
                     onChange={(e) => setCreateStudentForm({ ...createStudentForm, parentName: e.target.value })}
+                    disabled={phoneCheckResult.exists && phoneCheckResult.canAdd}
+                    className={phoneCheckResult.exists && phoneCheckResult.canAdd ? 'bg-gray-100' : ''}
                     autoComplete="off"
                   />
                 </div>
@@ -872,22 +984,41 @@ export default function StudentsPage() {
 
             {/* 登录密码 */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">
-                登录密码
-              </label>
-              <Input
-                type="password"
-                placeholder={phoneCheckResult.exists && phoneCheckResult.canAdd ? '已有用户，无需设置密码' : '请输入登录密码'}
-                value={createStudentForm.password}
-                onChange={(e) => setCreateStudentForm({ ...createStudentForm, password: e.target.value })}
-                disabled={phoneCheckResult.exists && phoneCheckResult.canAdd}
-                className={phoneCheckResult.exists && phoneCheckResult.canAdd ? 'bg-gray-100' : ''}
-                autoComplete="new-password"
-              />
-              {phoneCheckResult.exists && phoneCheckResult.canAdd ? (
-                <p className="text-xs text-green-600">该手机号已有用户，将自动关联，无需设置密码</p>
+              <label className="text-sm font-medium">登录密码</label>
+              {createStudentType === 'adult' ? (
+                <>
+                  <Input
+                    type="password"
+                    placeholder={phoneCheckResult.exists && phoneCheckResult.canAdd ? '已有用户，无需设置密码' : '请输入登录密码'}
+                    value={createStudentForm.password}
+                    onChange={(e) => setCreateStudentForm({ ...createStudentForm, password: e.target.value })}
+                    disabled={phoneCheckResult.exists && phoneCheckResult.canAdd}
+                    className={phoneCheckResult.exists && phoneCheckResult.canAdd ? 'bg-gray-100' : ''}
+                    autoComplete="new-password"
+                  />
+                  {phoneCheckResult.exists && phoneCheckResult.canAdd ? (
+                    <p className="text-xs text-green-600">该手机号已有用户，将自动关联，无需设置密码</p>
+                  ) : (
+                    <p className="text-xs text-gray-500">默认密码: 123456</p>
+                  )}
+                </>
               ) : (
-                <p className="text-xs text-gray-500">默认密码: 123456</p>
+                <>
+                  <Input
+                    type="password"
+                    placeholder={phoneCheckResult.exists && phoneCheckResult.canAdd ? '已有家长账号，无需设置密码' : '请输入家长登录密码'}
+                    value={createStudentForm.password}
+                    onChange={(e) => setCreateStudentForm({ ...createStudentForm, password: e.target.value })}
+                    disabled={phoneCheckResult.exists && phoneCheckResult.canAdd}
+                    className={phoneCheckResult.exists && phoneCheckResult.canAdd ? 'bg-gray-100' : ''}
+                    autoComplete="new-password"
+                  />
+                  {phoneCheckResult.exists && phoneCheckResult.canAdd ? (
+                    <p className="text-xs text-green-600">家长已有账号，将自动关联，无需设置密码</p>
+                  ) : (
+                    <p className="text-xs text-gray-500">默认密码: 123456</p>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -895,7 +1026,7 @@ export default function StudentsPage() {
             <Button variant="outline" onClick={() => setCreateStudentDialogOpen(false)}>取消</Button>
             <Button
               onClick={handleCreateStudentUser}
-              disabled={!phoneCheckResult.canAdd || phoneCheckResult.checking}
+              disabled={(!phoneCheckResult.canAdd || phoneCheckResult.checking)}
             >
               创建
             </Button>
@@ -940,6 +1071,74 @@ export default function StudentsPage() {
             <Button onClick={handleCreateAccount} disabled={accountLoading || accountPassword.length < 6}>
               {accountLoading ? '创建中...' : '创建账号'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 编辑学员对话框 */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        setDialogOpen(open)
+        if (!open) setEditId(null)
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>编辑学员</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">姓名 *</label>
+                <Input
+                  placeholder="请输入姓名"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">性别</label>
+                <Select value={formData.gender} onValueChange={(v) => setFormData({ ...formData, gender: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">男</SelectItem>
+                    <SelectItem value="2">女</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">手机号</label>
+              <Input
+                type="tel"
+                placeholder="请输入手机号"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              />
+            </div>
+            {editStudentType === 'minor' && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">家长姓名</label>
+                  <Input
+                    placeholder="请输入家长姓名"
+                    value={formData.parentName}
+                    onChange={(e) => setFormData({ ...formData, parentName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">家长手机号</label>
+                  <Input
+                    type="tel"
+                    placeholder="请输入家长手机号"
+                    value={formData.parentPhone}
+                    onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDialogOpen(false); setEditId(null) }}>取消</Button>
+            <Button onClick={handleSubmit}>保存</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
