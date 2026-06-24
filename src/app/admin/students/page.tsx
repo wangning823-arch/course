@@ -66,14 +66,17 @@ export default function StudentsPage() {
     setLoading(true)
     try {
       let url = `/api/students?search=${debouncedSearch}`
-      // 教练：默认看所有俱乐部学员，选择具体俱乐部时按俱乐部过滤
-      if ((role === 'coach' || role === 'part_time_coach') && userId) {
+      // 兼职教练：只看自己的纯私有学员
+      if (role === 'part_time_coach' && userId) {
+        url += `&coachId=${userId}&clubId=private`
+      } else if (role === 'coach' && userId) {
+        // coach 角色：看所有俱乐部学员
         url += `&coachId=${userId}`
         if (currentClubId && currentClubId !== 'all') {
           url += `&clubId=${currentClubId}`
         }
       } else {
-        // 管理员/全职教练：按俱乐部过滤
+        // 管理员：按俱乐部过滤
         if (currentClubId && currentClubId !== 'all') {
           url += `&clubId=${currentClubId}`
         }
@@ -383,8 +386,8 @@ export default function StudentsPage() {
       }
     }
 
-    // 检查是否选择了俱乐部（兼职教练可以创建纯私有学员，clubId 可以为 null）
-    if ((role === 'club_admin' || role === 'full_time_coach' || role === 'super_admin') && (!currentClubId || currentClubId === 'all')) {
+    // 检查是否选择了俱乐部（兼职教练创建纯私有学员不需要俱乐部）
+    if (role !== 'part_time_coach' && (role === 'club_admin' || role === 'super_admin') && (!currentClubId || currentClubId === 'all')) {
       alert('请先选择一个俱乐部')
       return
     }
@@ -394,19 +397,12 @@ export default function StudentsPage() {
       let submitClubId: number | null = null
       let submitCoachId: number | null = null
 
-      if (role === 'part_time_coach' || role === 'coach') {
-        // 兼职教练：根据学员归属类型设置
-        if (studentType === 'solo') {
-          // 纯私有：不关联俱乐部
-          submitClubId = null
-          submitCoachId = userId
-        } else {
-          // 俱乐部私有：关联当前俱乐部
-          submitClubId = currentClubId && currentClubId !== 'all' ? parseInt(currentClubId) : null
-          submitCoachId = userId
-        }
+      if (role === 'part_time_coach') {
+        // 兼职教练：只能创建纯私有学员
+        submitClubId = null
+        submitCoachId = userId
       } else {
-        // 管理员/全职教练
+        // 管理员
         submitClubId = currentClubId && currentClubId !== 'all' ? parseInt(currentClubId) : null
         submitCoachId = null
       }
@@ -462,10 +458,10 @@ export default function StudentsPage() {
     }
   }
 
-  const isAdmin = role === 'admin' || role === 'club_admin' || role === 'super_admin' || role === 'full_time_coach'
-  const canManage = role === 'admin' || role === 'club_admin' || role === 'full_time_coach' // 超级管理员只能查看
-  const canAddStudent = role === 'admin' || role === 'club_admin' || role === 'coach' || role === 'part_time_coach' || role === 'full_time_coach'
-  const canEditOwn = role === 'coach' || role === 'part_time_coach' // 教练可编辑/删除自己的私有学员
+  const isAdmin = role === 'admin' || role === 'club_admin' || role === 'super_admin'
+  const canManage = role === 'admin' || role === 'club_admin' // 超级管理员只能查看
+  const canAddStudent = role === 'admin' || role === 'club_admin' || role === 'coach' || role === 'part_time_coach'
+  const canEditOwn = role === 'part_time_coach' // 兼职教练可编辑/删除自己的私有学员
 
   // 按家庭分组显示未成年学员
   const groupedStudents = React.useMemo(() => {
@@ -891,7 +887,9 @@ export default function StudentsPage() {
           <DialogHeader>
             <DialogTitle>添加学员</DialogTitle>
             <DialogDescription>
-              {createStudentType === 'adult' ? '创建学员信息和登录账号' : '创建学员信息，关联家长账号'}
+              {role === 'part_time_coach'
+                ? '创建私有学员'
+                : createStudentType === 'adult' ? '创建学员信息和登录账号' : '创建学员信息，关联家长账号'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -918,34 +916,7 @@ export default function StudentsPage() {
               </div>
             </div>
 
-            {/* 兼职教练：学员归属类型选择 */}
-            {(role === 'part_time_coach' || role === 'coach') && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">学员归属</label>
-                <div className="flex gap-2">
-                  <Button
-                    variant={studentType === 'private' ? 'default' : 'outline'}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setStudentType('private')}
-                  >
-                    <UserCheck className="h-4 w-4 mr-1" />俱乐部私有
-                  </Button>
-                  <Button
-                    variant={studentType === 'solo' ? 'default' : 'outline'}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setStudentType('solo')}
-                  >
-                    <Lock className="h-4 w-4 mr-1" />纯私有
-                  </Button>
-                </div>
-                <p className="text-xs text-gray-500">
-                  俱乐部私有：学员属于当前俱乐部，仅你可见<br />
-                  纯私有：学员不关联任何俱乐部，仅你可见
-                </p>
-              </div>
-            )}
+            {/* 兼职教练：学员归属类型选择（已简化为只能创建纯私有学员，不再显示选择） */}
 
             {/* 联系方式 - 根据学员类型显示在最前面 */}
             {createStudentType === 'adult' ? (

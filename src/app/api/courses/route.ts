@@ -10,6 +10,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const coachId = searchParams.get('coachId')
   const campusId = searchParams.get('campusId')
   const clubId = searchParams.get('clubId')
+  const studentId = searchParams.get('studentId')
 
   const where: any = {}
   where.status = { not: 'cancelled' }
@@ -25,6 +26,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
   if (coachId) where.coachId = parseInt(coachId)
   if (campusId) where.campusId = parseInt(campusId)
+  if (studentId) {
+    where.students = { some: { studentId: parseInt(studentId) } }
+  }
 
   const courses = await prisma.course.findMany({
     where,

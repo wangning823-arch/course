@@ -2,32 +2,77 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { Users, Calendar, CalendarPlus, BarChart3 } from 'lucide-react'
+import { Users, Calendar, CalendarPlus, BarChart3, Clock, BookOpen, ArrowRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { authFetch } from '@/lib/fetch-client'
+
+const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' }> = {
+  completed: { label: '已完成', variant: 'success' },
+  in_progress: { label: '进行中', variant: 'warning' },
+  scheduled: { label: '待开始', variant: 'default' },
+}
 
 export default function ParentHomePage() {
   const [children, setChildren] = React.useState<any[]>([])
+  const [childrenData, setChildrenData] = React.useState<Record<number, { courses: any[]; stats: any }>>({})
   const [loading, setLoading] = React.useState(true)
 
+  const today = new Date()
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
   React.useEffect(() => {
-    const fetchChildren = async () => {
+    const fetchAll = async () => {
       try {
+        // 获取孩子列表
         const res = await authFetch('/api/parent/children')
-        if (res.ok) {
-          const data = await res.json()
-          setChildren(data.linked || [])
+        if (!res.ok) return
+        const data = await res.json()
+        const linked = data.linked || []
+        setChildren(linked)
+
+        if (linked.length === 0) {
+          setLoading(false)
+          return
         }
+
+        // 为每个孩子获取今日课程和本月统计
+        const dataMap: Record<number, { courses: any[]; stats: any }> = {}
+
+        await Promise.all(linked.map(async (child: any) => {
+          try {
+            // 获取今日课程
+            const coursesRes = await authFetch(
+              `/api/courses?startDate=${dateStr}&endDate=${dateStr}&studentId=${child.id}`
+            )
+            const courses = coursesRes.ok ? await coursesRes.json() : []
+
+            // 获取本月统计
+            const statsRes = await authFetch(
+              `/api/student/my-stats?period=month&studentId=${child.id}`
+            )
+            const stats = statsRes.ok ? await statsRes.json() : {
+              totalLessons: 0, totalMinutes: 0, completedLessons: 0, pendingLessons: 0
+            }
+
+            dataMap[child.id] = { courses, stats }
+          } catch (e) {
+            console.error(`获取孩子 ${child.id} 数据失败:`, e)
+            dataMap[child.id] = { courses: [], stats: { totalLessons: 0, totalMinutes: 0, completedLessons: 0, pendingLessons: 0 } }
+          }
+        }))
+
+        setChildrenData(dataMap)
       } catch (error) {
-        console.error('获取孩子列表失败:', error)
+        console.error('获取数据失败:', error)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchChildren()
-  }, [])
+    fetchAll()
+  }, [dateStr])
 
   if (loading) {
     return (
@@ -41,73 +86,119 @@ export default function ParentHomePage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">家长中心</h1>
 
-      {/* 孩子列表 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">我的孩子</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {children.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-gray-500">暂无关联的孩子</p>
-              <Link href="/parent/children" className="text-blue-500 hover:underline mt-2 inline-block">
-                去关联孩子
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {children.map((child) => (
-                <div key={child.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+      {children.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Users className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+            <p className="text-gray-500 mb-3">暂无关联的孩子</p>
+            <Link href="/parent/children">
+              <Button>去关联孩子</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
+        children.map((child) => {
+          const childData = childrenData[child.id] || { courses: [], stats: { totalLessons: 0, totalMinutes: 0, completedLessons: 0, pendingLessons: 0 } }
+          return (
+            <Card key={child.id}>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                       <Users className="h-5 w-5 text-blue-600" />
                     </div>
                     <div>
-                      <p className="font-medium">{child.name}</p>
+                      <CardTitle className="text-lg">{child.name}</CardTitle>
                       <p className="text-sm text-gray-500">
-                        {child.club?.name || '未分配俱乐部'} | {child.coach?.name || '未分配教练'}
+                        {child.club?.name || '未分配俱乐部'}
+                        {child.coach?.name ? ` · 教练：${child.coach.name}` : ''}
                       </p>
                     </div>
                   </div>
-                  <Badge variant={child.userId ? 'default' : 'secondary'}>
-                    {child.userId ? '已创建账号' : '未创建账号'}
-                  </Badge>
+                  <Link href={`/student/courses?studentId=${child.id}`}>
+                    <Button variant="ghost" size="sm">
+                      查看全部 <ArrowRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </Link>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* 统计卡片 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-blue-500" />
+                      <span className="text-xs text-gray-500">今日课程</span>
+                    </div>
+                    <p className="text-lg font-bold mt-1">{childData.courses.length}</p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-green-500" />
+                      <span className="text-xs text-gray-500">本月课时</span>
+                    </div>
+                    <p className="text-lg font-bold mt-1">{childData.stats.totalLessons}</p>
+                  </div>
+                  <div className="bg-yellow-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-yellow-500" />
+                      <span className="text-xs text-gray-500">已完成</span>
+                    </div>
+                    <p className="text-lg font-bold mt-1">{childData.stats.completedLessons}</p>
+                  </div>
+                  <div className="bg-purple-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4 text-purple-500" />
+                      <span className="text-xs text-gray-500">本月分钟</span>
+                    </div>
+                    <p className="text-lg font-bold mt-1">{childData.stats.totalMinutes}分</p>
+                  </div>
+                </div>
 
-      {/* 快捷入口 */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <Link href="/parent/children">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-4 text-center">
-              <Users className="h-8 w-8 mx-auto mb-2 text-blue-500" />
-              <p className="font-medium">孩子管理</p>
-            </CardContent>
-          </Card>
-        </Link>
+                {/* 今日课程列表 */}
+                {childData.courses.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">今日课程</p>
+                    <div className="space-y-2">
+                      {childData.courses.map((course: any) => (
+                        <div key={course.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="font-medium">{course.startTime}-{course.endTime}</span>
+                            <span className="text-gray-600">{course.subject}</span>
+                            <span className="text-gray-500 hidden sm:inline">{course.coach}</span>
+                          </div>
+                          <Badge variant={statusMap[course.status]?.variant || 'default'}>
+                            {statusMap[course.status]?.label || course.status}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-        <Link href="/student/courses">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-4 text-center">
-              <Calendar className="h-8 w-8 mx-auto mb-2 text-green-500" />
-              <p className="font-medium">课程查看</p>
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/parent/book">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-4 text-center">
-              <CalendarPlus className="h-8 w-8 mx-auto mb-2 text-orange-500" />
-              <p className="font-medium">预约课程</p>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
+                {/* 快捷操作 */}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Link href="/student/courses">
+                    <Button variant="outline" size="sm">
+                      <Calendar className="h-3.5 w-3.5 mr-1" />课程查看
+                    </Button>
+                  </Link>
+                  <Link href="/parent/book">
+                    <Button variant="outline" size="sm">
+                      <CalendarPlus className="h-3.5 w-3.5 mr-1" />预约课程
+                    </Button>
+                  </Link>
+                  <Link href="/student/stats">
+                    <Button variant="outline" size="sm">
+                      <BarChart3 className="h-3.5 w-3.5 mr-1" />学习统计
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })
+      )}
     </div>
   )
 }

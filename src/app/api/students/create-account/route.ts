@@ -10,8 +10,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '未授权' }, { status: 401 })
   }
 
-  // 只有管理员可以创建账号
-  if (!['super_admin', 'club_admin', 'full_time_coach'].includes(authUser.role)) {
+  // 只有管理员可以创建账号（全职教练无学员管理权限）
+  if (!['super_admin', 'club_admin'].includes(authUser.role)) {
     return NextResponse.json({ error: '无权限' }, { status: 403 })
   }
 

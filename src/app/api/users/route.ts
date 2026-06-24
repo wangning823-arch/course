@@ -108,7 +108,47 @@ export async function POST(request: NextRequest) {
   })
 
   if (existing) {
-    // 手机号已存在：如果是教练，检查是否需要关联到新俱乐部
+    // 俱乐部管理员添加教练时，只有兼职教练才能关联
+    if (createdByRole === 'club_admin') {
+      if (existing.role === 'part_time_coach') {
+        // 兼职教练可以关联到新俱乐部
+        const targetClubId = parseInt(String(clubId))
+        const alreadyMember = existing.memberships.some(m => m.clubId === targetClubId)
+
+        if (alreadyMember) {
+          return NextResponse.json({ error: '该用户已是此俱乐部成员' }, { status: 400 })
+        }
+
+        await prisma.clubMember.create({
+          data: {
+            clubId: targetClubId,
+            userId: existing.id,
+            role: 'coach',
+          },
+        })
+
+        return NextResponse.json({
+          id: existing.id,
+          name: existing.name,
+          phone: existing.phone,
+          role: existing.role,
+          message: '已关联到当前俱乐部',
+        })
+      } else {
+        // 其他角色（管理员、全职教练、学员、家长等）不能添加为教练
+        const roleLabel = existing.role === 'full_time_coach' ? '全职教练'
+          : existing.role === 'club_admin' ? '俱乐部管理员'
+          : existing.role === 'super_admin' ? '系统管理员'
+          : existing.role === 'parent' ? '家长'
+          : existing.role === 'student' ? '学员'
+          : '用户'
+        return NextResponse.json({
+          error: `该手机号已是${roleLabel}（${existing.name}），不能添加为教练`,
+        }, { status: 400 })
+      }
+    }
+
+    // 超级管理员：关联到俱乐部
     const targetClubId = parseInt(String(clubId))
     const alreadyMember = existing.memberships.some(m => m.clubId === targetClubId)
 
@@ -116,7 +156,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '该用户已是此俱乐部成员' }, { status: 400 })
     }
 
-    // 关联到新俱乐部
     await prisma.clubMember.create({
       data: {
         clubId: targetClubId,
@@ -124,23 +163,6 @@ export async function POST(request: NextRequest) {
         role: role === 'club_admin' ? 'admin' : 'coach',
       },
     })
-
-    // 全职教练只能关联一个俱乐部
-    if (role === 'full_time_coach') {
-      const membershipCount = await prisma.clubMember.count({
-        where: { userId: existing.id },
-      })
-      if (membershipCount > 1) {
-        // 删除刚创建的关联
-        await prisma.clubMember.deleteMany({
-          where: {
-            userId: existing.id,
-            clubId: targetClubId,
-          },
-        })
-        return NextResponse.json({ error: '全职教练只能关联一个俱乐部' }, { status: 400 })
-      }
-    }
 
     return NextResponse.json({
       id: existing.id,
@@ -197,27 +219,6 @@ export async function POST(request: NextRequest) {
       where: { id: parseInt(String(clubId)) },
       data: { adminId: user.id },
     })
-  }
-
-  // 全职教练只能关联一个俱乐部
-  if (role === 'full_time_coach' && clubId) {
-    const membershipCount = await prisma.clubMember.count({
-      where: { userId: user.id },
-    })
-    if (membershipCount > 1) {
-      // 删除刚创建的关联
-      await prisma.clubMember.deleteMany({
-        where: {
-          userId: user.id,
-          clubId: parseInt(String(clubId)),
-        },
-      })
-      // 删除用户
-      await prisma.user.delete({
-        where: { id: user.id },
-      })
-      return NextResponse.json({ error: '全职教练只能关联一个俱乐部' }, { status: 400 })
-    }
   }
 
   return NextResponse.json({

@@ -470,7 +470,7 @@ export default function SchedulePage() {
     } finally {
       setLoading(false)
     }
-  }, [weekOffset, coachFilter])
+  }, [weekOffset, coachFilter, currentClubId, user?.id, role])
 
   React.useEffect(() => {
     loadCourses()
@@ -487,15 +487,6 @@ export default function SchedulePage() {
     }
   }, [role, user?.id])
 
-  // 监听俱乐部切换
-  React.useEffect(() => {
-    const handleClubChanged = () => {
-      loadCourses()
-      loadOptions()
-    }
-    window.addEventListener('clubChanged', handleClubChanged)
-    return () => window.removeEventListener('clubChanged', handleClubChanged)
-  }, [loadCourses, loadOptions])
 
   // 创建课程
   const handleCreate = async () => {

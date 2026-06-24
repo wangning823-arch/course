@@ -134,23 +134,11 @@ export const POST = withAuth(async (request: NextRequest, context?: any) => {
   let finalCoachId: number | null = null
 
   if (authUser?.role === 'part_time_coach') {
-    if (clubId === null || clubId === undefined || clubId === '') {
-      // 兼职教练创建纯私有学员（无俱乐部关联）
-      finalClubId = null
-      finalCoachId = authUser.userId
-    } else {
-      // 兼职教练创建俱乐部学员：验证教练是否属于该俱乐部
-      const membership = await prisma.clubMember.findFirst({
-        where: { userId: authUser.userId, clubId: parseInt(clubId) },
-      })
-      if (!membership) {
-        return apiError('无权在该俱乐部创建学员', 403)
-      }
-      finalClubId = parseInt(clubId)
-      finalCoachId = coachId ? parseInt(coachId) : null
-    }
-  } else if (authUser?.role === 'club_admin' || authUser?.role === 'full_time_coach') {
-    // 管理员/全职教练创建的学员必须属于自己的俱乐部
+    // 兼职教练只能创建纯私有学员（无俱乐部关联）
+    finalClubId = null
+    finalCoachId = authUser.userId
+  } else if (authUser?.role === 'club_admin') {
+    // 管理员创建的学员必须属于自己的俱乐部
     if (!clubId) {
       return apiError('请选择俱乐部', 400)
     }

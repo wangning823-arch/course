@@ -11,8 +11,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未授权' }, { status: 401 })
     }
 
-    // 管理员、全职教练、兼职教练都可以创建学员
-    if (!['super_admin', 'club_admin', 'full_time_coach', 'part_time_coach'].includes(authUser.role)) {
+    // 管理员、兼职教练可以创建学员（全职教练无学员管理权限）
+    if (!['super_admin', 'club_admin', 'part_time_coach'].includes(authUser.role)) {
       return NextResponse.json({ error: '无权限' }, { status: 403 })
     }
 
@@ -159,17 +159,19 @@ export async function POST(request: NextRequest) {
     }
 
     // 确定 coachId：
-    // - 兼职教练：如果传入了 coachId，则使用传入的值
-    // - 管理员/全职教练：coachId 由后续分配逻辑决定
-    const parsedCoachId = authUser.role === 'part_time_coach'
-      ? (coachId ? parseInt(String(coachId)) : authUser.userId)
+    // - 兼职教练：强制纯私有学员（clubId = null, coachId = 自己）
+    // - 管理员：coachId 由后续分配逻辑决定
+    const isPartTimeCoach = authUser.role === 'part_time_coach'
+    const finalClubId = isPartTimeCoach ? null : parsedClubId
+    const parsedCoachId = isPartTimeCoach
+      ? authUser.userId
       : (coachId ? parseInt(String(coachId)) : null)
 
     // 创建学员记录
     const student = await prisma.student.create({
       data: {
-        clubId: parsedClubId,
-        coachId: parsedClubId ? parsedCoachId : authUser.userId,  // 纯私有学员：coachId = 当前教练
+        clubId: finalClubId,
+        coachId: finalClubId ? parsedCoachId : authUser.userId,  // 纯私有学员：coachId = 当前教练
         userId: userId,
         parentId: parentId,
         studentType: studentType || 'adult',

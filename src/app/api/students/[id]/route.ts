@@ -20,6 +20,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (existingStudent.coachId !== authUser.userId) {
       return NextResponse.json({ error: '无权修改其他教练的学员' }, { status: 403 })
     }
+  } else if (authUser?.role === 'full_time_coach') {
+    return NextResponse.json({ error: '全职教练无学员管理权限' }, { status: 403 })
   }
 
   const updatedStudent = await prisma.student.update({
@@ -60,6 +62,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (existingStudent.coachId !== authUser.userId) {
       return NextResponse.json({ error: '无权删除其他教练的学员' }, { status: 403 })
     }
+  } else if (authUser?.role === 'full_time_coach') {
+    return NextResponse.json({ error: '全职教练无学员管理权限' }, { status: 403 })
   }
 
   // 检查是否有课程关联

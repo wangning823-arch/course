@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const period = searchParams.get('period') || 'month' // week/month/quarter/year
+  const specificStudentId = searchParams.get('studentId') // 可选：指定单个学员
 
   // 获取学员信息
   let studentIds: number[] = []
@@ -24,9 +25,11 @@ export async function GET(request: NextRequest) {
     }
     studentIds = [student.id]
   } else if (authUser.role === 'parent') {
-    const students = await prisma.student.findMany({
-      where: { parentId: authUser.userId },
-    })
+    const where: any = { parentId: authUser.userId }
+    if (specificStudentId) {
+      where.id = parseInt(specificStudentId)
+    }
+    const students = await prisma.student.findMany({ where })
     studentIds = students.map(s => s.id)
   } else {
     return NextResponse.json({ error: '无权限' }, { status: 403 })

@@ -39,6 +39,7 @@ export default function UsersPage() {
   const [editId, setEditId] = React.useState<number | null>(null)
   const [filterClubId, setFilterClubId] = React.useState<string>('all')
   const [phoneExists, setPhoneExists] = React.useState(false)
+  const [existingUserRole, setExistingUserRole] = React.useState('')
 
   // 将 storeUser 转换为 User 类型（包含 clubId）
   const currentUser = React.useMemo(() => {
@@ -87,6 +88,7 @@ export default function UsersPage() {
     if (!phone || editId) {
       setPhoneExists(false)
       setExistingUserName('')
+      setExistingUserRole('')
       return
     }
     try {
@@ -96,14 +98,22 @@ export default function UsersPage() {
       if (existing) {
         setPhoneExists(true)
         setExistingUserName(existing.name)
-        setFormData(prev => ({ ...prev, name: existing.name }))
+        setExistingUserRole(existing.role)
+        // 兼职教练关联时，锁定角色为兼职教练
+        if (currentUser?.role === 'club_admin' && existing.role === 'part_time_coach') {
+          setFormData(prev => ({ ...prev, name: existing.name, role: 'part_time_coach' as UserRole }))
+        } else {
+          setFormData(prev => ({ ...prev, name: existing.name }))
+        }
       } else {
         setPhoneExists(false)
         setExistingUserName('')
+        setExistingUserRole('')
       }
     } catch {
       setPhoneExists(false)
       setExistingUserName('')
+      setExistingUserRole('')
     }
   }
 
@@ -221,6 +231,11 @@ export default function UsersPage() {
 
   const [editingUser, setEditingUser] = React.useState<any>(null)
 
+  // 是否禁止提交（俱乐部管理员添加时，手机号属于不可添加的角色）
+  const isBlocked = React.useMemo(() => {
+    return phoneExists && currentUser?.role === 'club_admin' && existingUserRole !== 'part_time_coach'
+  }, [phoneExists, currentUser, existingUserRole])
+
   // 检查是否可以更改角色
   const canChangeRole = React.useMemo(() => {
     if (!editingUser || !currentUser) return false
@@ -263,7 +278,7 @@ export default function UsersPage() {
             刷新
           </Button>
           {availableRoles.length > 0 && (
-            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setPhoneExists(false); setExistingUserName(''); setEditingUser(null) } }}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setPhoneExists(false); setExistingUserName(''); setExistingUserRole(''); setEditingUser(null) } }}>
               <DialogTrigger asChild>
                 <Button onClick={() => { setFormData({ name: '', phone: '', role: (availableRoles[0]?.value || 'part_time_coach') as UserRole, password: '', clubId: isClubAdminLocked ? String(currentUser?.clubId || '') : '' }); setEditId(null) }}>
                   <Plus className="h-4 w-4 mr-1" />添加用户
@@ -280,7 +295,15 @@ export default function UsersPage() {
                   <div className="space-y-2">
                     <label className="text-sm font-medium">手机号</label>
                     <Input type="tel" placeholder="请输入手机号" value={formData.phone} onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); checkPhone(e.target.value) }} />
-                    {phoneExists && (
+                    {phoneExists && currentUser?.role === 'club_admin' && existingUserRole === 'part_time_coach' && (
+                      <p className="text-sm text-blue-600">该手机号已是兼职教练（{existingUserName}），将直接关联到当前俱乐部</p>
+                    )}
+                    {phoneExists && currentUser?.role === 'club_admin' && existingUserRole !== 'part_time_coach' && (
+                      <p className="text-sm text-red-500">
+                        该手机号已是{existingUserRole === 'full_time_coach' ? '全职教练' : existingUserRole === 'club_admin' ? '俱乐部管理员' : existingUserRole === 'super_admin' ? '系统管理员' : existingUserRole === 'parent' ? '家长' : existingUserRole === 'student' ? '学员' : '其他用户'}（{existingUserName}），不能添加为教练
+                      </p>
+                    )}
+                    {phoneExists && currentUser?.role === 'super_admin' && (
                       <p className="text-sm text-blue-600">该手机号已存在，将直接关联到当前俱乐部</p>
                     )}
                   </div>
@@ -306,6 +329,10 @@ export default function UsersPage() {
                       ) : (
                         <Input value={roleLabels[formData.role] || formData.role} disabled className="bg-gray-50" />
                       )
+                    ) : phoneExists && currentUser?.role === 'club_admin' && existingUserRole === 'part_time_coach' ? (
+                      <Input value="兼职教练" disabled className="bg-gray-50" />
+                    ) : phoneExists && currentUser?.role === 'club_admin' && existingUserRole !== 'part_time_coach' ? (
+                      <Input value={roleLabels[existingUserRole as UserRole] || existingUserRole} disabled className="bg-gray-50" />
                     ) : (
                       <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v as UserRole })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
@@ -351,7 +378,7 @@ export default function UsersPage() {
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
-                  <Button onClick={handleSubmit}>确定</Button>
+                  <Button onClick={handleSubmit} disabled={isBlocked}>确定</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
