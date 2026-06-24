@@ -15,6 +15,7 @@ export default function StudentStatsPage() {
   React.useEffect(() => {
     const fetchStats = async () => {
       setLoading(true)
+      setStats(null)
       try {
         const res = await authFetch(`/api/student/my-stats?period=${period}`)
         if (res.ok) {
@@ -30,14 +31,6 @@ export default function StudentStatsPage() {
 
     fetchStats()
   }, [period])
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-gray-500">加载中...</div>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-4">
@@ -71,30 +64,34 @@ export default function StudentStatsPage() {
         </div>
       </div>
 
+      {loading && (
+        <div className="text-center py-4 text-sm text-gray-500">加载中...</div>
+      )}
+
       {/* 概览卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-blue-500">{stats?.totalLessons || 0}</p>
+            <p className="text-3xl font-bold text-blue-500">{stats?.totalHours || 0}h</p>
             <p className="text-sm text-gray-500">总课时</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-green-500">{stats?.totalMinutes || 0}</p>
-            <p className="text-sm text-gray-500">总时长(分钟)</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-purple-500">{stats?.completedLessons || 0}</p>
+            <p className="text-3xl font-bold text-green-500">{stats?.completedHours || 0}h</p>
             <p className="text-sm text-gray-500">已完成</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-orange-500">{stats?.pendingLessons || 0}</p>
-            <p className="text-sm text-gray-500">待确认</p>
+            <p className="text-3xl font-bold text-purple-500">{stats?.totalCourseCount || 0}次</p>
+            <p className="text-sm text-gray-500">课程数</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-orange-500">{(stats?.totalCourseCount || 0) - (stats?.completedCourseCount || 0)}次</p>
+            <p className="text-sm text-gray-500">待完成</p>
           </CardContent>
         </Card>
       </div>
@@ -112,7 +109,7 @@ export default function StudentStatsPage() {
                 <XAxis dataKey="month" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="count" fill="#8884d8" name="课时数" />
+                <Bar dataKey="hours" fill="#8884d8" name="课时(小时)" />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -141,7 +138,7 @@ export default function StudentStatsPage() {
                     label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                     outerRadius={80}
                     fill="#8884d8"
-                    dataKey="count"
+                    dataKey="hours"
                   >
                     {stats.subjectStats.map((_: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -158,7 +155,7 @@ export default function StudentStatsPage() {
                       style={{ backgroundColor: COLORS[index % COLORS.length] }}
                     />
                     <span className="text-sm">{subject.name}</span>
-                    <span className="text-sm text-gray-500">({subject.count}课时)</span>
+                    <span className="text-sm text-gray-500">({subject.hours}h)</span>
                   </div>
                 ))}
               </div>

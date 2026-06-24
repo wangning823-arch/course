@@ -35,9 +35,9 @@ const studentMenuItems = [
 
 // 家长角色菜单
 const parentMenuItems = [
+  { icon: Calendar, label: '课程查看', href: '/parent/courses' },
   { icon: Users, label: '孩子管理', href: '/parent/children' },
-  { icon: Calendar, label: '课程查看', href: '/student/courses' },
-  { icon: CalendarPlus, label: '预约课程', href: '/parent/book' },
+  { icon: BarChart3, label: '学习统计', href: '/student/stats' },
 ]
 
 // 兼职教练角色专属菜单
@@ -110,8 +110,8 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
 
   // 根据角色选择菜单
   const getMainItems = () => {
-    if (role === 'student') return [...mainMenuItems, ...studentMenuItems]
-    if (role === 'parent') return [...mainMenuItems, ...parentMenuItems]
+    if (role === 'student') return [{ icon: Home, label: '首页', href: '/student' }, ...studentMenuItems]
+    if (role === 'parent') return [{ icon: Home, label: '首页', href: '/parent' }, ...parentMenuItems]
     if (role === 'coach' || role === 'part_time_coach') return [...mainMenuItems, ...partTimeCoachMenuItems]
     if (role === 'full_time_coach') return [...mainMenuItems, ...fullTimeCoachMenuItems]
     if (role === 'super_admin') return mainMenuItems // 系统管理员只有首页

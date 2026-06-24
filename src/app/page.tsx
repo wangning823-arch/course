@@ -25,6 +25,16 @@ export default function HomePage() {
   const currentClubId = useClubStore((s) => s.currentClubId)
   const role = user?.role || ''
 
+  // 家长和学员重定向到各自首页
+  if (role === 'parent') {
+    if (typeof window !== 'undefined') window.location.replace('/parent')
+    return <div className="flex items-center justify-center min-h-[400px]"><div className="text-gray-500">加载中...</div></div>
+  }
+  if (role === 'student') {
+    if (typeof window !== 'undefined') window.location.replace('/student')
+    return <div className="flex items-center justify-center min-h-[400px]"><div className="text-gray-500">加载中...</div></div>
+  }
+
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [selectedCourse, setSelectedCourse] = React.useState<any>(null)
 

@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAuthUser } from '@/lib/auth'
 
-// GET /api/student/my-stats - 获取学员的统计数据
+export const dynamic = 'force-dynamic'
+
+// 计算课程时长（分钟）
+function courseDurationMinutes(startTime: string, endTime: string): number {
+  const [sh, sm] = startTime.split(':').map(Number)
+  const [eh, em] = endTime.split(':').map(Number)
+  return (eh * 60 + em) - (sh * 60 + sm)
+}
+
+// GET /api/student/my-stats - 获取学员的统计数据（基于课程而非课时记录）
 export async function GET(request: NextRequest) {
   const authUser = await getAuthUser(request)
   if (!authUser) {
@@ -10,8 +19,8 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url)
-  const period = searchParams.get('period') || 'month' // week/month/quarter/year
-  const specificStudentId = searchParams.get('studentId') // 可选：指定单个学员
+  const period = searchParams.get('period') || 'month'
+  const specificStudentId = searchParams.get('studentId')
 
   // 获取学员信息
   let studentIds: number[] = []
@@ -37,129 +46,118 @@ export async function GET(request: NextRequest) {
 
   if (studentIds.length === 0) {
     return NextResponse.json({
-      totalLessons: 0,
-      totalMinutes: 0,
-      completedLessons: 0,
-      pendingLessons: 0,
+      totalHours: 0,
+      completedHours: 0,
+      totalCourseCount: 0,
+      completedCourseCount: 0,
       subjectStats: [],
       monthlyTrend: [],
-    })
+    }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
-  // 计算时间范围
+  // 计算时间范围（UTC）
   const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const day = now.getDate()
   let startDate: Date
 
   switch (period) {
     case 'week':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay())
+      startDate = new Date(Date.UTC(year, month, day - now.getDay()))
       break
     case 'quarter':
-      const quarter = Math.floor(now.getMonth() / 3)
-      startDate = new Date(now.getFullYear(), quarter * 3, 1)
+      const quarter = Math.floor(month / 3)
+      startDate = new Date(Date.UTC(year, quarter * 3, 1))
       break
     case 'year':
-      startDate = new Date(now.getFullYear(), 0, 1)
+      startDate = new Date(Date.UTC(year, 0, 1))
       break
     case 'month':
     default:
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+      startDate = new Date(Date.UTC(year, month, 1))
   }
 
-  // 查询统计数据
-  const [totalLessons, totalMinutesResult, completedLessons, pendingLessons] = await Promise.all([
-    prisma.lesson.count({
-      where: {
-        studentId: { in: studentIds },
-        createdAt: { gte: startDate },
-      },
-    }),
-    prisma.lesson.aggregate({
-      where: {
-        studentId: { in: studentIds },
-        createdAt: { gte: startDate },
-      },
-      _sum: {
-        durationMinutes: true,
-      },
-    }),
-    prisma.lesson.count({
-      where: {
-        studentId: { in: studentIds },
-        status: 'confirmed',
-        createdAt: { gte: startDate },
-      },
-    }),
-    prisma.lesson.count({
-      where: {
-        studentId: { in: studentIds },
-        status: 'pending',
-        createdAt: { gte: startDate },
-      },
-    }),
-  ])
-
-  // 科目分布统计
-  const subjectStats = await prisma.lesson.groupBy({
-    by: ['courseId'],
-    where: {
-      studentId: { in: studentIds },
-      createdAt: { gte: startDate },
-    },
-    _count: {
-      id: true,
-    },
-  })
-
-  // 获取课程对应的科目信息
-  const courseIds = subjectStats.map(s => s.courseId)
+  // 查询该学员在时间范围内的所有课程（含课时记录）
   const courses = await prisma.course.findMany({
-    where: { id: { in: courseIds } },
-    include: { subject: true },
+    where: {
+      status: { not: 'cancelled' },
+      scheduledDate: { gte: startDate },
+      students: { some: { studentId: { in: studentIds } } },
+    },
+    include: {
+      lessons: { select: { id: true, status: true, durationMinutes: true } },
+      subject: { select: { name: true } },
+    },
+    orderBy: { scheduledDate: 'asc' },
   })
 
-  const courseSubjectMap = new Map(courses.map(c => [c.id, c.subject]))
+  // 按课程时长计算总课时
+  let totalHours = 0
+  let completedHours = 0
+  let totalCourseCount = 0
+  let completedCourseCount = 0
 
-  // 按科目汇总
-  const subjectSummary: { [key: string]: { name: string; count: number } } = {}
-  subjectStats.forEach(stat => {
-    const subject = courseSubjectMap.get(stat.courseId)
-    if (subject) {
-      if (!subjectSummary[subject.id]) {
-        subjectSummary[subject.id] = { name: subject.name, count: 0 }
-      }
-      subjectSummary[subject.id].count += stat._count.id
+  // 科目统计
+  const subjectMap: Record<string, { name: string; count: number; minutes: number }> = {}
+
+  for (const course of courses) {
+    const duration = courseDurationMinutes(course.startTime, course.endTime)
+    totalHours += duration / 60
+    totalCourseCount++
+
+    // 有已确认的课时记录 = 已完成
+    const confirmedLesson = course.lessons.find(l => l.status === 'confirmed')
+    if (confirmedLesson) {
+      completedHours += (confirmedLesson.durationMinutes || duration) / 60
+      completedCourseCount++
     }
-  })
 
-  // 月度趋势（最近6个月）
+    // 科目统计
+    const subjectName = course.subject?.name || '未知'
+    if (!subjectMap[subjectName]) {
+      subjectMap[subjectName] = { name: subjectName, count: 0, minutes: 0 }
+    }
+    subjectMap[subjectName].count++
+    subjectMap[subjectName].minutes += duration
+  }
+
+  // 月度趋势（最近6个月，基于课程）
   const monthlyTrend = []
   for (let i = 5; i >= 0; i--) {
-    const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59)
+    const trendMonth = month - i
+    const monthStart = new Date(Date.UTC(year, trendMonth, 1))
+    const monthEnd = new Date(Date.UTC(year, trendMonth + 1, 0, 23, 59, 59))
 
-    const count = await prisma.lesson.count({
+    const monthCourses = await prisma.course.findMany({
       where: {
-        studentId: { in: studentIds },
-        createdAt: {
-          gte: monthStart,
-          lte: monthEnd,
-        },
+        status: { not: 'cancelled' },
+        scheduledDate: { gte: monthStart, lte: monthEnd },
+        students: { some: { studentId: { in: studentIds } } },
       },
+      select: { startTime: true, endTime: true },
     })
+
+    const monthMinutes = monthCourses.reduce((sum, c) => sum + courseDurationMinutes(c.startTime, c.endTime), 0)
 
     monthlyTrend.push({
       month: `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`,
-      count,
+      hours: parseFloat((monthMinutes / 60).toFixed(1)),
     })
   }
 
   return NextResponse.json({
-    totalLessons,
-    totalMinutes: totalMinutesResult._sum.durationMinutes || 0,
-    completedLessons,
-    pendingLessons,
-    subjectStats: Object.values(subjectSummary),
+    totalHours: parseFloat(totalHours.toFixed(1)),
+    completedHours: parseFloat(completedHours.toFixed(1)),
+    totalCourseCount,
+    completedCourseCount,
+    subjectStats: Object.values(subjectMap).map(s => ({
+      name: s.name,
+      count: s.count,
+      hours: parseFloat((s.minutes / 60).toFixed(1)),
+    })),
     monthlyTrend,
+  }, {
+    headers: { 'Cache-Control': 'no-store' },
   })
 }

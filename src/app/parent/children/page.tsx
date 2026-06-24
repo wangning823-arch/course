@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { Users, Plus, Link as LinkIcon, Check } from 'lucide-react'
+import Link from 'next/link'
+import { Users, Plus, Link as LinkIcon, Check, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -70,7 +71,11 @@ export default function ParentChildrenPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">孩子管理</h1>
+      <div className="flex items-center gap-1.5 text-sm text-gray-500">
+        <Link href="/parent" className="hover:text-gray-700">首页</Link>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <span className="text-gray-900 font-medium">孩子管理</span>
+      </div>
 
       {/* 已关联的孩子 */}
       <Card>
@@ -95,9 +100,9 @@ export default function ParentChildrenPage() {
                       </p>
                     </div>
                   </div>
-                  <Badge variant={child.userId ? 'default' : 'secondary'}>
-                    {child.userId ? '已创建账号' : '未创建账号'}
-                  </Badge>
+                  {child.userId && (
+                    <Badge variant="default">已创建账号</Badge>
+                  )}
                 </div>
               ))}
             </div>

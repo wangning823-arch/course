@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { authFetch } from '@/lib/fetch-client'
+import { ParentBookDialog } from './book/dialog'
 
 const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' }> = {
   completed: { label: '已完成', variant: 'success' },
@@ -18,6 +19,8 @@ export default function ParentHomePage() {
   const [children, setChildren] = React.useState<any[]>([])
   const [childrenData, setChildrenData] = React.useState<Record<number, { courses: any[]; stats: any }>>({})
   const [loading, setLoading] = React.useState(true)
+  const [bookDialogOpen, setBookDialogOpen] = React.useState(false)
+  const [bookChildId, setBookChildId] = React.useState<number | null>(null)
 
   const today = new Date()
   const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -53,13 +56,13 @@ export default function ParentHomePage() {
               `/api/student/my-stats?period=month&studentId=${child.id}`
             )
             const stats = statsRes.ok ? await statsRes.json() : {
-              totalLessons: 0, totalMinutes: 0, completedLessons: 0, pendingLessons: 0
+              totalHours: 0, completedHours: 0, totalCourseCount: 0, completedCourseCount: 0
             }
 
             dataMap[child.id] = { courses, stats }
           } catch (e) {
             console.error(`获取孩子 ${child.id} 数据失败:`, e)
-            dataMap[child.id] = { courses: [], stats: { totalLessons: 0, totalMinutes: 0, completedLessons: 0, pendingLessons: 0 } }
+            dataMap[child.id] = { courses: [], stats: { totalHours: 0, completedHours: 0, totalCourseCount: 0, completedCourseCount: 0 } }
           }
         }))
 
@@ -84,7 +87,9 @@ export default function ParentHomePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">家长中心</h1>
+      <div className="flex items-center gap-1.5 text-sm text-gray-500">
+        <span className="text-gray-900 font-medium">首页</span>
+      </div>
 
       {children.length === 0 ? (
         <Card>
@@ -115,7 +120,7 @@ export default function ParentHomePage() {
                       </p>
                     </div>
                   </div>
-                  <Link href={`/student/courses?studentId=${child.id}`}>
+                  <Link href={`/parent/courses?childId=${child.id}`}>
                     <Button variant="ghost" size="sm">
                       查看全部 <ArrowRight className="h-4 w-4 ml-1" />
                     </Button>
@@ -137,21 +142,14 @@ export default function ParentHomePage() {
                       <Clock className="h-4 w-4 text-green-500" />
                       <span className="text-xs text-gray-500">本月课时</span>
                     </div>
-                    <p className="text-lg font-bold mt-1">{childData.stats.totalLessons}</p>
+                    <p className="text-lg font-bold mt-1">{childData.stats.totalHours || 0}h</p>
                   </div>
                   <div className="bg-yellow-50 rounded-lg p-3">
                     <div className="flex items-center gap-2">
                       <BookOpen className="h-4 w-4 text-yellow-500" />
                       <span className="text-xs text-gray-500">已完成</span>
                     </div>
-                    <p className="text-lg font-bold mt-1">{childData.stats.completedLessons}</p>
-                  </div>
-                  <div className="bg-purple-50 rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <BarChart3 className="h-4 w-4 text-purple-500" />
-                      <span className="text-xs text-gray-500">本月分钟</span>
-                    </div>
-                    <p className="text-lg font-bold mt-1">{childData.stats.totalMinutes}分</p>
+                    <p className="text-lg font-bold mt-1">{childData.stats.completedHours || 0}h</p>
                   </div>
                 </div>
 
@@ -178,16 +176,14 @@ export default function ParentHomePage() {
 
                 {/* 快捷操作 */}
                 <div className="flex flex-wrap gap-2 pt-1">
-                  <Link href="/student/courses">
+                  <Link href="/parent/courses">
                     <Button variant="outline" size="sm">
                       <Calendar className="h-3.5 w-3.5 mr-1" />课程查看
                     </Button>
                   </Link>
-                  <Link href="/parent/book">
-                    <Button variant="outline" size="sm">
-                      <CalendarPlus className="h-3.5 w-3.5 mr-1" />预约课程
-                    </Button>
-                  </Link>
+                  <Button variant="outline" size="sm" onClick={() => { setBookChildId(child.id); setBookDialogOpen(true) }}>
+                    <CalendarPlus className="h-3.5 w-3.5 mr-1" />预约课程
+                  </Button>
                   <Link href="/student/stats">
                     <Button variant="outline" size="sm">
                       <BarChart3 className="h-3.5 w-3.5 mr-1" />学习统计
@@ -199,6 +195,7 @@ export default function ParentHomePage() {
           )
         })
       )}
+      <ParentBookDialog open={bookDialogOpen} onOpenChange={setBookDialogOpen} defaultChildId={bookChildId} />
     </div>
   )
 }

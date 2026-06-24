@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { Users, Calendar, Clock, User, Check } from 'lucide-react'
+import Link from 'next/link'
+import { Users, Calendar, Clock, User, Check, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -128,7 +129,11 @@ export default function ParentBookPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">预约课程</h1>
+      <div className="flex items-center gap-1.5 text-sm text-gray-500">
+        <Link href="/parent" className="hover:text-gray-700">首页</Link>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <span className="text-gray-900 font-medium">预约课程</span>
+      </div>
 
       {/* 选择孩子 */}
       {children.length > 1 && (
