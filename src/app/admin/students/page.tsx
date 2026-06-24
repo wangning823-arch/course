@@ -390,6 +390,27 @@ export default function StudentsPage() {
     }
 
     try {
+      // 根据角色和学员归属类型确定 clubId 和 coachId
+      let submitClubId: number | null = null
+      let submitCoachId: number | null = null
+
+      if (role === 'part_time_coach' || role === 'coach') {
+        // 兼职教练：根据学员归属类型设置
+        if (studentType === 'solo') {
+          // 纯私有：不关联俱乐部
+          submitClubId = null
+          submitCoachId = userId
+        } else {
+          // 俱乐部私有：关联当前俱乐部
+          submitClubId = currentClubId && currentClubId !== 'all' ? parseInt(currentClubId) : null
+          submitCoachId = userId
+        }
+      } else {
+        // 管理员/全职教练
+        submitClubId = currentClubId && currentClubId !== 'all' ? parseInt(currentClubId) : null
+        submitCoachId = null
+      }
+
       const submitData: any = {
         name: createStudentForm.name,
         phone: createStudentForm.phone || null,
@@ -398,7 +419,8 @@ export default function StudentsPage() {
         parentName: createStudentForm.parentName || null,
         parentPhone: createStudentForm.parentPhone || null,
         studentType: createStudentType,
-        clubId: currentClubId && currentClubId !== 'all' ? parseInt(currentClubId) : null,
+        clubId: submitClubId,
+        coachId: submitCoachId,
         password: createStudentForm.password || null,
       }
 
@@ -479,7 +501,10 @@ export default function StudentsPage() {
             {(role === 'coach' || role === 'part_time_coach') ? '我的学员' : role === 'super_admin' ? '学员查看' : '学员管理'}
           </h1>
           {canAddStudent && (
-            <Button onClick={() => setCreateStudentDialogOpen(true)} size="sm">
+            <Button onClick={() => {
+              setStudentType('private')  // 默认为俱乐部私有
+              setCreateStudentDialogOpen(true)
+            }} size="sm">
               <UserPlus className="h-4 w-4 mr-1" />添加
             </Button>
           )}
@@ -892,6 +917,35 @@ export default function StudentsPage() {
                 </Button>
               </div>
             </div>
+
+            {/* 兼职教练：学员归属类型选择 */}
+            {(role === 'part_time_coach' || role === 'coach') && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">学员归属</label>
+                <div className="flex gap-2">
+                  <Button
+                    variant={studentType === 'private' ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setStudentType('private')}
+                  >
+                    <UserCheck className="h-4 w-4 mr-1" />俱乐部私有
+                  </Button>
+                  <Button
+                    variant={studentType === 'solo' ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setStudentType('solo')}
+                  >
+                    <Lock className="h-4 w-4 mr-1" />纯私有
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  俱乐部私有：学员属于当前俱乐部，仅你可见<br />
+                  纯私有：学员不关联任何俱乐部，仅你可见
+                </p>
+              </div>
+            )}
 
             {/* 联系方式 - 根据学员类型显示在最前面 */}
             {createStudentType === 'adult' ? (

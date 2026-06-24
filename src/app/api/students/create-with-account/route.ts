@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
       parentPhone,
       studentType,
       clubId,
+      coachId,  // 新增：教练ID，用于兼职教练创建私有学员
       password,
     } = await request.json()
 
@@ -157,10 +158,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '无效的俱乐部ID' }, { status: 400 })
     }
 
+    // 确定 coachId：
+    // - 兼职教练：如果传入了 coachId，则使用传入的值
+    // - 管理员/全职教练：coachId 由后续分配逻辑决定
+    const parsedCoachId = authUser.role === 'part_time_coach'
+      ? (coachId ? parseInt(String(coachId)) : authUser.userId)
+      : (coachId ? parseInt(String(coachId)) : null)
+
     // 创建学员记录
     const student = await prisma.student.create({
       data: {
         clubId: parsedClubId,
+        coachId: parsedClubId ? parsedCoachId : authUser.userId,  // 纯私有学员：coachId = 当前教练
         userId: userId,
         parentId: parentId,
         studentType: studentType || 'adult',
