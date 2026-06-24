@@ -31,6 +31,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // 系统管理员不允许访问的页面（业务操作和俱乐部管理）
   const superAdminBlockedPaths = ['/schedule', '/lessons', '/admin/campuses', '/admin/subjects', '/admin/coach-prices', '/feedback']
 
+  // 学员和家长只能访问的页面
+  const studentAllowedPaths = ['/student', '/parent']
+  const studentBlockedPaths = ['/schedule', '/lessons', '/admin', '/statistics', '/feedback']
+
   // 等待 Zustand persist hydration 完成
   React.useEffect(() => {
     // 使用 Zustand 的 onRehydrateStorage 回调来检测 hydration 完成
@@ -65,6 +69,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         // 系统管理员不允许访问业务页面和俱乐部管理页面
         if (user.role === 'super_admin' && superAdminBlockedPaths.some(p => pathname.startsWith(p))) {
           router.replace('/')
+          return
+        }
+
+        // 学员和家长只能访问 /student 和 /parent 路径
+        if ((user.role === 'student' || user.role === 'parent') && !studentAllowedPaths.some(p => pathname.startsWith(p))) {
+          router.replace(user.role === 'parent' ? '/parent' : '/student')
+          return
+        }
+
+        // 学员和家长不能访问管理员/教练的页面
+        if ((user.role === 'student' || user.role === 'parent') && studentBlockedPaths.some(p => pathname.startsWith(p))) {
+          router.replace(user.role === 'parent' ? '/parent' : '/student')
           return
         }
 

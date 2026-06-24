@@ -9,6 +9,8 @@ export const ROLES = {
   CLUB_ADMIN: 'club_admin',
   FULL_TIME_COACH: 'full_time_coach',
   PART_TIME_COACH: 'part_time_coach',
+  STUDENT: 'student',
+  PARENT: 'parent',
 } as const
 
 export type UserRole = typeof ROLES[keyof typeof ROLES]
@@ -19,6 +21,8 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   club_admin: '俱乐部管理员',
   full_time_coach: '全职教练',
   part_time_coach: '兼职教练',
+  student: '学员',
+  parent: '家长',
 }
 
 // 角色颜色映射（用于 Element Plus Tag 组件）
@@ -27,6 +31,8 @@ export const ROLE_COLORS: Record<UserRole, string> = {
   club_admin: 'warning',
   full_time_coach: 'success',
   part_time_coach: 'primary',
+  student: 'info',
+  parent: 'info',
 }
 
 /**
@@ -100,4 +106,25 @@ export function canAccessSystemManagement(role: string): boolean {
  */
 export function canCreatePrivate(role: string): boolean {
   return role === ROLES.PART_TIME_COACH
+}
+
+/**
+ * 判断是否为学员角色
+ */
+export function isStudent(role: string): boolean {
+  return role === ROLES.STUDENT
+}
+
+/**
+ * 判断是否为家长角色
+ */
+export function isParent(role: string): boolean {
+  return role === ROLES.PARENT
+}
+
+/**
+ * 判断是否为学员或家长角色
+ */
+export function isStudentOrParent(role: string): boolean {
+  return role === ROLES.STUDENT || role === ROLES.PARENT
 }

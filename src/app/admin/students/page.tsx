@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, Edit, Trash2, Search, RefreshCw, UserCheck, UserX, Users, Lock, User } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, RefreshCw, UserCheck, UserX, Users, Lock, User, Key, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -32,6 +32,32 @@ export default function StudentsPage() {
   const [coachClubs, setCoachClubs] = React.useState<Club[]>([])
   const [selectedClubId, setSelectedClubId] = React.useState<string>('')
   const [studentType, setStudentType] = React.useState<'shared' | 'private' | 'solo'>('private')
+  // 新增：学员类型筛选和账号创建相关状态
+  const [typeFilter, setTypeFilter] = React.useState<'all' | 'adult' | 'minor'>('all')
+  const [createAccountDialogOpen, setCreateAccountDialogOpen] = React.useState(false)
+  const [createAccountStudent, setCreateAccountStudent] = React.useState<any>(null)
+  const [accountPassword, setAccountPassword] = React.useState('')
+  const [accountLoading, setAccountLoading] = React.useState(false)
+  // 创建学员用户对话框状态
+  const [createStudentDialogOpen, setCreateStudentDialogOpen] = React.useState(false)
+  const [createStudentType, setCreateStudentType] = React.useState<'adult' | 'minor'>('adult')
+  const [createStudentForm, setCreateStudentForm] = React.useState({
+    name: '',
+    phone: '',
+    gender: '1',
+    birthDate: '',
+    parentName: '',
+    parentPhone: '',
+    password: '123456',
+  })
+  // 手机号检查状态
+  const [phoneCheckResult, setPhoneCheckResult] = React.useState<{
+    checking: boolean
+    exists: boolean
+    canAdd: boolean
+    error: string | null
+    user: any | null
+  }>({ checking: false, exists: false, canAdd: true, error: null, user: null })
 
   const role = user?.role || ''
   const userId = user?.id || null
@@ -52,6 +78,10 @@ export default function StudentsPage() {
           url += `&clubId=${currentClubId}`
         }
       }
+      // 按学员类型筛选
+      if (typeFilter !== 'all') {
+        url += `&studentType=${typeFilter}`
+      }
 
       const res = await authFetch(url)
       if (!res.ok) {
@@ -66,7 +96,7 @@ export default function StudentsPage() {
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, role, userId, currentClubId])
+  }, [debouncedSearch, role, userId, currentClubId, typeFilter])
 
   // 加载教练列表（管理员用）
   const fetchCoaches = React.useCallback(async () => {
@@ -116,6 +146,72 @@ export default function StudentsPage() {
     fetchCoaches()
   }, [currentClubId, fetchStudents, fetchCoaches])
 
+  // 检查手机号是否已有用户
+  const checkPhone = React.useCallback(async (phone: string, isAdult: boolean) => {
+    if (!phone || phone.length < 11) {
+      setPhoneCheckResult({ checking: false, exists: false, canAdd: true, error: null, user: null })
+      return
+    }
+
+    setPhoneCheckResult(prev => ({ ...prev, checking: true }))
+
+    try {
+      const res = await authFetch('/api/students/check-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
+      })
+
+      if (!res.ok) {
+        setPhoneCheckResult({ checking: false, exists: false, canAdd: true, error: null, user: null })
+        return
+      }
+
+      const data = await res.json()
+
+      if (!data.exists) {
+        // 手机号没有用户，需要创建
+        setPhoneCheckResult({ checking: false, exists: false, canAdd: true, error: null, user: null })
+      } else if (data.canAdd) {
+        // 手机号已有用户且可以关联
+        setPhoneCheckResult({
+          checking: false,
+          exists: true,
+          canAdd: true,
+          error: null,
+          user: data.user,
+        })
+      } else {
+        // 手机号是教练或管理员，不能添加
+        setPhoneCheckResult({
+          checking: false,
+          exists: true,
+          canAdd: false,
+          error: data.error || '该手机号不能作为学员添加',
+          user: data.user,
+        })
+      }
+    } catch (error) {
+      console.error('检查手机号失败:', error)
+      setPhoneCheckResult({ checking: false, exists: false, canAdd: true, error: null, user: null })
+    }
+  }, [])
+
+  // 手机号输入防抖检查
+  React.useEffect(() => {
+    const phone = createStudentType === 'adult' ? createStudentForm.phone : createStudentForm.parentPhone
+    if (!phone || phone.length < 11) {
+      setPhoneCheckResult({ checking: false, exists: false, canAdd: true, error: null, user: null })
+      return
+    }
+
+    const timer = setTimeout(() => {
+      checkPhone(phone, createStudentType === 'adult')
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [createStudentForm.phone, createStudentForm.parentPhone, createStudentType, checkPhone])
+
   const handleSubmit = async () => {
     try {
       const submitData: any = { ...formData, gender: parseInt(formData.gender) }
@@ -159,10 +255,23 @@ export default function StudentsPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('确定要删除该学员吗？')) return
     try {
-      await authFetch(`/api/students/${id}`, { method: 'DELETE' })
-      fetchStudents()
+      const res = await authFetch(`/api/students/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        fetchStudents()
+      } else {
+        const errorText = await res.text()
+        let errorMsg = '删除失败'
+        try {
+          const errorData = JSON.parse(errorText)
+          errorMsg = errorData.error || '删除失败'
+        } catch {
+          errorMsg = errorText || '删除失败'
+        }
+        alert(errorMsg)
+      }
     } catch (error) {
       console.error('删除失败:', error)
+      alert('删除失败')
     }
   }
 
@@ -200,10 +309,155 @@ export default function StudentsPage() {
     }
   }
 
+  // 创建学员登录账号
+  const handleCreateAccount = async () => {
+    if (!createAccountStudent || !accountPassword) return
+    setAccountLoading(true)
+    try {
+      const res = await authFetch('/api/students/create-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: createAccountStudent.id,
+          phone: createAccountStudent.phone || createAccountStudent.parentPhone,
+          password: accountPassword,
+          studentType: createAccountStudent.studentType || 'adult',
+          parentPhone: createAccountStudent.parentPhone,
+        }),
+      })
+      if (res.ok) {
+        setCreateAccountDialogOpen(false)
+        setCreateAccountStudent(null)
+        setAccountPassword('')
+        fetchStudents()
+      } else {
+        const data = await res.json()
+        alert(data.error || '创建账号失败')
+      }
+    } catch (error) {
+      console.error('创建账号失败:', error)
+      alert('创建账号失败')
+    } finally {
+      setAccountLoading(false)
+    }
+  }
+
+  // 创建学员用户（同时创建学员信息和登录账号）
+  const handleCreateStudentUser = async () => {
+    if (!createStudentForm.name) {
+      alert('请填写学员姓名')
+      return
+    }
+
+    // 成年学员需要手机号，未成年学员需要家长手机号
+    if (createStudentType === 'adult' && !createStudentForm.phone) {
+      alert('请输入学员手机号')
+      return
+    }
+    if (createStudentType === 'minor' && !createStudentForm.parentPhone) {
+      alert('请输入家长手机号')
+      return
+    }
+
+    // 如果手机号没有用户，需要验证密码
+    if (!phoneCheckResult.exists) {
+      if (!createStudentForm.password) {
+        alert('请输入登录密码')
+        return
+      }
+      if (createStudentForm.password.length < 6) {
+        alert('密码至少需要6位')
+        return
+      }
+    }
+
+    // 检查是否选择了俱乐部（兼职教练可以创建纯私有学员，clubId 可以为 null）
+    if ((role === 'club_admin' || role === 'full_time_coach' || role === 'super_admin') && (!currentClubId || currentClubId === 'all')) {
+      alert('请先选择一个俱乐部')
+      return
+    }
+
+    try {
+      const submitData: any = {
+        name: createStudentForm.name,
+        phone: createStudentForm.phone || null,
+        gender: parseInt(createStudentForm.gender),
+        birthDate: createStudentForm.birthDate || null,
+        parentName: createStudentForm.parentName || null,
+        parentPhone: createStudentForm.parentPhone || null,
+        studentType: createStudentType,
+        clubId: currentClubId && currentClubId !== 'all' ? parseInt(currentClubId) : null,
+        password: createStudentForm.password || null,
+      }
+
+      const res = await authFetch('/api/students/create-with-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(submitData),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setCreateStudentDialogOpen(false)
+        setCreateStudentForm({
+          name: '',
+          phone: '',
+          gender: '1',
+          birthDate: '',
+          parentName: '',
+          parentPhone: '',
+          password: '123456',
+        })
+        setPhoneCheckResult({ checking: false, exists: false, canAdd: true, error: null, user: null })
+        fetchStudents()
+        alert(data.message || '学员用户创建成功')
+      } else {
+        const errorText = await res.text()
+        let errorMsg = '创建失败'
+        try {
+          const errorData = JSON.parse(errorText)
+          errorMsg = errorData.error || '创建失败'
+        } catch {
+          errorMsg = errorText || '创建失败'
+        }
+        alert(errorMsg)
+      }
+    } catch (error) {
+      console.error('创建学员用户失败:', error)
+      alert('创建失败')
+    }
+  }
+
   const isAdmin = role === 'admin' || role === 'club_admin' || role === 'super_admin' || role === 'full_time_coach'
   const canManage = role === 'admin' || role === 'club_admin' || role === 'full_time_coach' // 超级管理员只能查看
   const canAddStudent = role === 'admin' || role === 'club_admin' || role === 'coach' || role === 'part_time_coach' || role === 'full_time_coach'
   const canEditOwn = role === 'coach' || role === 'part_time_coach' // 教练可编辑/删除自己的私有学员
+
+  // 按家庭分组显示未成年学员
+  const groupedStudents = React.useMemo(() => {
+    if (typeFilter !== 'minor') return null
+
+    const families: { [key: string]: { parentName: string; parentPhone: string; students: any[] } } = {}
+    const ungrouped: any[] = []
+
+    students.forEach((student) => {
+      if (student.parentPhone) {
+        const key = student.parentPhone
+        if (!families[key]) {
+          families[key] = {
+            parentName: student.parentName || '未知家长',
+            parentPhone: student.parentPhone,
+            students: [],
+          }
+        }
+        families[key].students.push(student)
+      } else {
+        ungrouped.push(student)
+      }
+    })
+
+    return { families: Object.values(families), ungrouped }
+  }, [students, typeFilter])
 
   return (
     <div className="space-y-4">
@@ -218,99 +472,40 @@ export default function StudentsPage() {
             刷新
           </Button>
           {canAddStudent && (
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={() => { setFormData({ name: '', phone: '', gender: '1', parentName: '', parentPhone: '' }); setEditId(null); setStudentType('private') }}>
-                  <Plus className="h-4 w-4 mr-1" />添加学员
-                </Button>
-              </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{editId ? '编辑学员' : '添加学员'}</DialogTitle>
-                <DialogDescription>
-                  {(String(role) === 'coach' || String(role) === 'part_time_coach') ? '选择学员归属并填写信息' : '填写学员信息'}
-                </DialogDescription>
-              </DialogHeader>
-              {(role === 'coach' || role === 'part_time_coach') && !editId && (
-                <div className="flex gap-2">
-                  <Button
-                    variant={studentType === 'private' ? 'default' : 'outline'}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setStudentType('private')}
-                  >
-                    <Lock className="h-4 w-4 mr-1" />俱乐部私有
-                  </Button>
-                  <Button
-                    variant={studentType === 'shared' ? 'default' : 'outline'}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setStudentType('shared')}
-                  >
-                    <Users className="h-4 w-4 mr-1" />俱乐部共享
-                  </Button>
-                  <Button
-                    variant={studentType === 'solo' ? 'default' : 'outline'}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setStudentType('solo')}
-                  >
-                    <User className="h-4 w-4 mr-1" />纯私有
-                  </Button>
-                </div>
-              )}
-              {(role === 'coach' || role === 'part_time_coach') && !editId && studentType !== 'solo' && coachClubs.length > 1 && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">所属俱乐部</label>
-                  <Select value={selectedClubId} onValueChange={setSelectedClubId}>
-                    <SelectTrigger><SelectValue placeholder="选择俱乐部" /></SelectTrigger>
-                    <SelectContent>
-                      {coachClubs.map((c) => (
-                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">姓名</label>
-                    <Input placeholder="请输入姓名" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">性别</label>
-                    <Select value={formData.gender} onValueChange={(v) => setFormData({ ...formData, gender: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">男</SelectItem>
-                        <SelectItem value="2">女</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">手机号</label>
-                  <Input type="tel" placeholder="请输入手机号" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">家长姓名</label>
-                    <Input placeholder="请输入家长姓名" value={formData.parentName} onChange={(e) => setFormData({ ...formData, parentName: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">家长手机号</label>
-                    <Input type="tel" placeholder="请输入家长手机号" value={formData.parentPhone} onChange={(e) => setFormData({ ...formData, parentPhone: e.target.value })} />
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
-                <Button onClick={handleSubmit}>确定</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            <>
+              <Button onClick={() => setCreateStudentDialogOpen(true)}>
+                <UserPlus className="h-4 w-4 mr-1" />添加学员
+              </Button>
+            </>
           )}
+        </div>
+      </div>
+
+      {/* 学员类型筛选 */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-gray-500">学员类型：</span>
+        <div className="flex gap-1">
+          <Button
+            variant={typeFilter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setTypeFilter('all')}
+          >
+            全部
+          </Button>
+          <Button
+            variant={typeFilter === 'adult' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setTypeFilter('adult')}
+          >
+            成年学员
+          </Button>
+          <Button
+            variant={typeFilter === 'minor' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setTypeFilter('minor')}
+          >
+            未成年学员
+          </Button>
         </div>
       </div>
 
@@ -331,7 +526,113 @@ export default function StudentsPage() {
             <div className="p-8 text-center text-gray-500">加载中...</div>
           ) : students.length === 0 ? (
             <div className="p-8 text-center text-gray-500">暂无数据</div>
+          ) : typeFilter === 'minor' && groupedStudents ? (
+            // 未成年学员按家庭分组显示
+            <div className="space-y-4">
+              {groupedStudents.families.map((family, index) => (
+                <div key={index} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-blue-500" />
+                      <span className="font-medium">家长：{family.parentName}</span>
+                      <span className="text-sm text-gray-500">（{family.parentPhone}）</span>
+                      <Badge variant="outline">{family.students.length}名学员</Badge>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {family.students.map((student) => (
+                      <div key={student.id} className="flex items-center justify-between pl-7 py-2 border-t">
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium">{student.name}</span>
+                          <span className="text-sm text-gray-500">
+                            {student.gender === 1 ? '男' : student.gender === 2 ? '女' : '-'}
+                          </span>
+                          {student.birthDate && (
+                            <span className="text-sm text-gray-500">
+                              {new Date(student.birthDate).getFullYear()}年生
+                            </span>
+                          )}
+                          {student.userId ? (
+                            <Badge variant="default" className="text-xs bg-green-100 text-green-700">
+                              <Key className="h-3 w-3 mr-1" />
+                              已创建账号
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">未创建账号</Badge>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => handleEdit(student)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          {!student.userId && canManage && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setCreateAccountStudent(student)
+                                setAccountPassword('')
+                                setCreateAccountDialogOpen(true)
+                              }}
+                            >
+                              <UserPlus className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {groupedStudents.ungrouped.length > 0 && (
+                <div className="border rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Users className="h-5 w-5 text-gray-400" />
+                    <span className="font-medium">未关联家长的学员</span>
+                  </div>
+                  <div className="space-y-2">
+                    {groupedStudents.ungrouped.map((student) => (
+                      <div key={student.id} className="flex items-center justify-between pl-7 py-2 border-t">
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium">{student.name}</span>
+                          <span className="text-sm text-gray-500">
+                            {student.gender === 1 ? '男' : student.gender === 2 ? '女' : '-'}
+                          </span>
+                          {student.userId ? (
+                            <Badge variant="default" className="text-xs bg-green-100 text-green-700">
+                              <Key className="h-3 w-3 mr-1" />
+                              已创建账号
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">未创建账号</Badge>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => handleEdit(student)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          {!student.userId && canManage && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setCreateAccountStudent(student)
+                                setAccountPassword('')
+                                setCreateAccountDialogOpen(true)
+                              }}
+                            >
+                              <UserPlus className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
+            // 成年学员或全部学员平铺显示
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -341,6 +642,7 @@ export default function StudentsPage() {
                     <TableHead>手机号</TableHead>
                     <TableHead className="hidden sm:table-cell">家长姓名</TableHead>
                     <TableHead className="hidden sm:table-cell">家长手机</TableHead>
+                    <TableHead>账号状态</TableHead>
                     {isAdmin && <TableHead>归属</TableHead>}
                     {(canManage || canEditOwn) && <TableHead>操作</TableHead>}
                   </TableRow>
@@ -353,6 +655,16 @@ export default function StudentsPage() {
                       <TableCell>{student.phone || '-'}</TableCell>
                       <TableCell className="hidden sm:table-cell">{student.parentName || '-'}</TableCell>
                       <TableCell className="hidden sm:table-cell">{student.parentPhone || '-'}</TableCell>
+                      <TableCell>
+                        {student.userId ? (
+                          <Badge variant="default" className="text-xs bg-green-100 text-green-700">
+                            <Key className="h-3 w-3 mr-1" />
+                            已创建
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">未创建</Badge>
+                        )}
+                      </TableCell>
                       {isAdmin && (
                         <TableCell>
                           {!student.clubId ? (
@@ -408,6 +720,19 @@ export default function StudentsPage() {
                             <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(student.id)}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
+                            {!student.userId && canManage && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setCreateAccountStudent(student)
+                                  setAccountPassword('')
+                                  setCreateAccountDialogOpen(true)
+                                }}
+                              >
+                                <UserPlus className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       )}
@@ -419,6 +744,205 @@ export default function StudentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* 创建学员用户对话框 */}
+      <Dialog open={createStudentDialogOpen} onOpenChange={(open) => {
+        setCreateStudentDialogOpen(open)
+        if (!open) {
+          setPhoneCheckResult({ checking: false, exists: false, canAdd: true, error: null, user: null })
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>创建学员用户</DialogTitle>
+            <DialogDescription>
+              同时创建学员信息和登录账号
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* 学员类型选择 */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">学员类型</label>
+              <div className="flex gap-2">
+                <Button
+                  variant={createStudentType === 'adult' ? 'default' : 'outline'}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setCreateStudentType('adult')}
+                >
+                  <User className="h-4 w-4 mr-1" />成年学员
+                </Button>
+                <Button
+                  variant={createStudentType === 'minor' ? 'default' : 'outline'}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setCreateStudentType('minor')}
+                >
+                  <Users className="h-4 w-4 mr-1" />未成年学员
+                </Button>
+              </div>
+            </div>
+
+            {/* 联系方式 - 根据学员类型显示在最前面 */}
+            {createStudentType === 'adult' ? (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">手机号 *</label>
+                <Input
+                  type="tel"
+                  placeholder="请输入学员手机号"
+                  value={createStudentForm.phone}
+                  onChange={(e) => setCreateStudentForm({ ...createStudentForm, phone: e.target.value })}
+                  autoComplete="off"
+                />
+                {phoneCheckResult.checking && (
+                  <p className="text-xs text-gray-500">检查中...</p>
+                )}
+                {!phoneCheckResult.checking && phoneCheckResult.exists && phoneCheckResult.canAdd && (
+                  <p className="text-xs text-green-600">该用户已是系统学员，将自动关联</p>
+                )}
+                {!phoneCheckResult.checking && !phoneCheckResult.canAdd && phoneCheckResult.error && (
+                  <p className="text-xs text-red-500">{phoneCheckResult.error}</p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">家长手机号 *</label>
+                  <Input
+                    type="tel"
+                    placeholder="请输入家长手机号"
+                    value={createStudentForm.parentPhone}
+                    onChange={(e) => setCreateStudentForm({ ...createStudentForm, parentPhone: e.target.value })}
+                    autoComplete="off"
+                  />
+                  {phoneCheckResult.checking && (
+                    <p className="text-xs text-gray-500">检查中...</p>
+                  )}
+                  {!phoneCheckResult.checking && phoneCheckResult.exists && phoneCheckResult.canAdd && (
+                    <p className="text-xs text-green-600">该用户已是系统用户，将自动关联</p>
+                  )}
+                  {!phoneCheckResult.checking && !phoneCheckResult.canAdd && phoneCheckResult.error && (
+                    <p className="text-xs text-red-500">{phoneCheckResult.error}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">家长姓名</label>
+                  <Input
+                    placeholder="请输入家长姓名"
+                    value={createStudentForm.parentName}
+                    onChange={(e) => setCreateStudentForm({ ...createStudentForm, parentName: e.target.value })}
+                    autoComplete="off"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* 基本信息 */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">姓名 *</label>
+                <Input
+                  placeholder="请输入姓名"
+                  value={createStudentForm.name}
+                  onChange={(e) => setCreateStudentForm({ ...createStudentForm, name: e.target.value })}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">性别</label>
+                <Select value={createStudentForm.gender} onValueChange={(v) => setCreateStudentForm({ ...createStudentForm, gender: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">男</SelectItem>
+                    <SelectItem value="2">女</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">出生日期</label>
+              <Input
+                type="date"
+                value={createStudentForm.birthDate}
+                onChange={(e) => setCreateStudentForm({ ...createStudentForm, birthDate: e.target.value })}
+                autoComplete="off"
+              />
+            </div>
+
+            {/* 登录密码 */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                登录密码
+              </label>
+              <Input
+                type="password"
+                placeholder={phoneCheckResult.exists && phoneCheckResult.canAdd ? '已有用户，无需设置密码' : '请输入登录密码'}
+                value={createStudentForm.password}
+                onChange={(e) => setCreateStudentForm({ ...createStudentForm, password: e.target.value })}
+                disabled={phoneCheckResult.exists && phoneCheckResult.canAdd}
+                className={phoneCheckResult.exists && phoneCheckResult.canAdd ? 'bg-gray-100' : ''}
+                autoComplete="new-password"
+              />
+              {phoneCheckResult.exists && phoneCheckResult.canAdd ? (
+                <p className="text-xs text-green-600">该手机号已有用户，将自动关联，无需设置密码</p>
+              ) : (
+                <p className="text-xs text-gray-500">默认密码: 123456</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateStudentDialogOpen(false)}>取消</Button>
+            <Button
+              onClick={handleCreateStudentUser}
+              disabled={!phoneCheckResult.canAdd || phoneCheckResult.checking}
+            >
+              创建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 创建账号对话框 */}
+      <Dialog open={createAccountDialogOpen} onOpenChange={setCreateAccountDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>创建学员登录账号</DialogTitle>
+            <DialogDescription>
+              为学员 {createAccountStudent?.name} 创建登录账号
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">登录手机号</label>
+              <Input
+                type="tel"
+                value={createAccountStudent?.phone || createAccountStudent?.parentPhone || ''}
+                disabled
+                className="bg-gray-50"
+              />
+              <p className="text-xs text-gray-500">
+                {createAccountStudent?.studentType === 'minor' ? '未成年学员使用家长手机号登录' : '使用学员手机号登录'}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">初始密码</label>
+              <Input
+                type="password"
+                placeholder="请设置初始密码（至少6位）"
+                value={accountPassword}
+                onChange={(e) => setAccountPassword(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateAccountDialogOpen(false)}>取消</Button>
+            <Button onClick={handleCreateAccount} disabled={accountLoading || accountPassword.length < 6}>
+              {accountLoading ? '创建中...' : '创建账号'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

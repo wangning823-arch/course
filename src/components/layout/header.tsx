@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useUserStore } from '@/stores/user-store'
 import { useClubStore } from '@/stores/club-store'
+import { NotificationBell } from '@/components/notification-bell'
 
 const titleMap: Record<string, string> = {
   '/schedule': '排课管理',
@@ -71,6 +72,7 @@ export function Header({ marginLeft, onMenuClick, isMobile }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        <NotificationBell />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">

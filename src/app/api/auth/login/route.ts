@@ -35,7 +35,26 @@ export async function POST(request: NextRequest) {
 
   // 获取用户的俱乐部信息
   let clubId: number | null = null
-  if (user.role !== 'super_admin') {
+  if (user.role === 'student') {
+    // 学员：通过 Student 表获取 clubId
+    const student = await prisma.student.findFirst({
+      where: { userId: user.id },
+      select: { clubId: true },
+    })
+    if (student) {
+      clubId = student.clubId
+    }
+  } else if (user.role === 'parent') {
+    // 家长：通过管理的学员获取 clubId
+    const childStudent = await prisma.student.findFirst({
+      where: { parentId: user.id },
+      select: { clubId: true },
+    })
+    if (childStudent) {
+      clubId = childStudent.clubId
+    }
+  } else if (user.role !== 'super_admin') {
+    // 其他角色：通过 ClubMember 获取
     const membership = await prisma.clubMember.findFirst({
       where: { userId: user.id },
       select: { clubId: true },

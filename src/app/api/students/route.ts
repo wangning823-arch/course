@@ -9,10 +9,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const search = searchParams.get('search') || ''
   const clubId = searchParams.get('clubId')
   const coachId = searchParams.get('coachId')
+  const studentType = searchParams.get('studentType') // 新增：学员类型筛选
 
-  if (!clubId && !coachId) {
-    return apiError('缺少clubId参数', 400)
-  }
+  // 不再强制要求 clubId 或 coachId，允许查看所有学员
 
   const searchFilter = search ? {
     OR: [
@@ -23,6 +22,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     ],
   } : undefined
 
+  // 学员类型筛选
+  const typeFilter = studentType && studentType !== 'all' ? { studentType } : undefined
+
   let students: any[] = []
 
   if (coachId) {
@@ -32,6 +34,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     if (clubId === 'private') {
       const where: any = { clubId: null, coachId: cid }
       if (searchFilter) where.AND = [searchFilter]
+      if (typeFilter) where.AND = [...(where.AND || []), typeFilter]
       students = await prisma.student.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -56,6 +59,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       if (clubIds.length > 0) {
         const where: any = { clubId: { in: clubIds }, coachId: null }
         if (searchFilter) where.AND = [searchFilter]
+        if (typeFilter) where.AND = [...(where.AND || []), typeFilter]
         const shared = await prisma.student.findMany({
           where,
           orderBy: { createdAt: 'desc' },
@@ -68,6 +72,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       if (clubIds.length > 0) {
         const where: any = { clubId: { in: clubIds }, coachId: cid }
         if (searchFilter) where.AND = [searchFilter]
+        if (typeFilter) where.AND = [...(where.AND || []), typeFilter]
         const privateInClub = await prisma.student.findMany({
           where,
           orderBy: { createdAt: 'desc' },
@@ -80,6 +85,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       if (!filterByClub) {
         const where: any = { clubId: null, coachId: cid }
         if (searchFilter) where.AND = [searchFilter]
+        if (typeFilter) where.AND = [...(where.AND || []), typeFilter]
         const purePrivate = await prisma.student.findMany({
           where,
           orderBy: { createdAt: 'desc' },
@@ -94,12 +100,17 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       )
     }
   } else {
-    // 管理员视角：按俱乐部过滤
+    // 管理员视角：按俱乐部过滤，不显示教练私有学员（clubId=null）
     const where: any = {}
     if (clubId && clubId !== 'all') {
+      // 选择具体俱乐部：只显示该俱乐部的学员
       where.clubId = parseInt(clubId)
+    } else {
+      // 选择"全部"或未选择：显示所有俱乐部学员，排除纯私有学员
+      where.clubId = { not: null }
     }
     if (searchFilter) where.AND = [searchFilter]
+    if (typeFilter) where.AND = [...(where.AND || []), typeFilter]
     students = await prisma.student.findMany({
       where,
       orderBy: { createdAt: 'desc' },

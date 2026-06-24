@@ -1,0 +1,153 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { getAuthUser } from '@/lib/auth'
+import { hashPassword } from '@/lib/password'
+
+// POST /api/students/create-with-account - 同时创建学员信息和登录账号
+export async function POST(request: NextRequest) {
+  try {
+    const authUser = await getAuthUser(request)
+    if (!authUser) {
+      return NextResponse.json({ error: '未授权' }, { status: 401 })
+    }
+
+    // 只有管理员可以创建
+    if (!['super_admin', 'club_admin', 'full_time_coach'].includes(authUser.role)) {
+      return NextResponse.json({ error: '无权限' }, { status: 403 })
+    }
+
+    const {
+      name,
+      phone,
+      gender,
+      birthDate,
+      parentName,
+      parentPhone,
+      studentType,
+      clubId,
+      password,
+    } = await request.json()
+
+    if (!name) {
+      return NextResponse.json({ error: '请填写学员姓名' }, { status: 400 })
+    }
+
+    // 根据学员类型验证必填字段
+    if (studentType === 'adult' && !phone) {
+      return NextResponse.json({ error: '请填写学员手机号' }, { status: 400 })
+    }
+
+    if (studentType === 'minor' && !parentPhone) {
+      return NextResponse.json({ error: '请填写家长手机号' }, { status: 400 })
+    }
+
+    // 确定登录手机号
+    const loginPhone = studentType === 'minor' ? parentPhone : phone
+
+    // 检查手机号是否已有用户
+    let existingUser = null
+    if (loginPhone) {
+      existingUser = await prisma.user.findUnique({
+        where: { phone: loginPhone },
+      })
+    }
+
+    let userId: number | null = null
+    let parentId: number | null = null
+
+    // 定义不能作为学员添加的角色
+    const nonStudentRoles = ['super_admin', 'club_admin', 'full_time_coach', 'part_time_coach']
+
+    if (studentType === 'adult') {
+      // 成年学员
+      if (existingUser) {
+        // 检查该用户是否是教练或管理员
+        if (nonStudentRoles.includes(existingUser.role)) {
+          return NextResponse.json({ error: '该手机号是教练或管理员，不能作为学员添加' }, { status: 400 })
+        }
+        // 手机号已有用户（别的俱乐部学员），不创建新用户
+        userId = existingUser.id
+      } else {
+        // 手机号没有用户，需要创建学员账户
+        if (!password) {
+          return NextResponse.json({ error: '该手机号没有用户，请设置登录密码' }, { status: 400 })
+        }
+        if (password.length < 6) {
+          return NextResponse.json({ error: '密码至少需要6位' }, { status: 400 })
+        }
+
+        // 创建密码哈希
+        const passwordHash = await hashPassword(password)
+
+        // 创建学员用户
+        const newUser = await prisma.user.create({
+          data: {
+            phone,
+            name,
+            passwordHash,
+            role: 'student',
+            gender: gender ? parseInt(String(gender)) : null,
+            birthDate: birthDate ? new Date(birthDate) : null,
+          },
+        })
+        userId = newUser.id
+      }
+    } else {
+      // 未成年学员
+      if (existingUser) {
+        // 家长手机号已有用户（可能是教练或管理员），不创建新用户
+        parentId = existingUser.id
+      } else {
+        // 家长手机号没有用户，创建家长用户
+        if (!password) {
+          return NextResponse.json({ error: '该家长手机号没有用户，请设置登录密码' }, { status: 400 })
+        }
+        if (password.length < 6) {
+          return NextResponse.json({ error: '密码至少需要6位' }, { status: 400 })
+        }
+
+        // 创建密码哈希
+        const passwordHash = await hashPassword(password)
+
+        // 创建家长用户
+        const newUser = await prisma.user.create({
+          data: {
+            phone: parentPhone,
+            name: parentName || `${name}的家长`,
+            passwordHash,
+            role: 'parent',
+            gender: gender ? parseInt(String(gender)) : null,
+          },
+        })
+        parentId = newUser.id
+      }
+    }
+
+    // 创建学员记录
+    const student = await prisma.student.create({
+      data: {
+        clubId: clubId ? parseInt(clubId) : null,
+        userId: userId,
+        parentId: parentId,
+        studentType: studentType || 'adult',
+        name,
+        phone: phone || null,
+        gender: gender ? parseInt(String(gender)) : null,
+        birthDate: birthDate ? new Date(birthDate) : null,
+        parentName: parentName || null,
+        parentPhone: parentPhone || null,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      student,
+      message: existingUser
+        ? '学员创建成功，已关联已有用户'
+        : '学员和用户创建成功',
+    }, { status: 201 })
+  } catch (error) {
+    console.error('创建学员失败:', error)
+    return NextResponse.json({ error: '创建失败，请稍后重试' }, { status: 500 })
+  }
+}

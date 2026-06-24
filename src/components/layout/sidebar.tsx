@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import {
   Home, Calendar, Timer, BarChart3, Settings, Users, Building2,
   MapPin, BookOpen, GraduationCap, DollarSign, ChevronDown, ChevronLeft,
-  MessageSquare
+  MessageSquare, CalendarPlus, User, Bell
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUserStore } from '@/stores/user-store'
@@ -22,6 +22,22 @@ interface SidebarProps {
 // 主菜单（所有角色都有）
 const mainMenuItems = [
   { icon: Home, label: '首页', href: '/' },
+]
+
+// 学员角色菜单
+const studentMenuItems = [
+  { icon: Calendar, label: '我的课程', href: '/student/courses' },
+  { icon: Timer, label: '课时记录', href: '/student/lessons' },
+  { icon: BarChart3, label: '学习统计', href: '/student/stats' },
+  { icon: CalendarPlus, label: '预约教练', href: '/student/book' },
+  { icon: User, label: '个人中心', href: '/student/profile' },
+]
+
+// 家长角色菜单
+const parentMenuItems = [
+  { icon: Users, label: '孩子管理', href: '/parent/children' },
+  { icon: Calendar, label: '课程查看', href: '/student/courses' },
+  { icon: CalendarPlus, label: '预约课程', href: '/parent/book' },
 ]
 
 // 兼职教练角色专属菜单
@@ -95,6 +111,8 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
 
   // 根据角色选择菜单
   const getMainItems = () => {
+    if (role === 'student') return [...mainMenuItems, ...studentMenuItems]
+    if (role === 'parent') return [...mainMenuItems, ...parentMenuItems]
     if (role === 'coach' || role === 'part_time_coach') return [...mainMenuItems, ...partTimeCoachMenuItems]
     if (role === 'full_time_coach') return [...mainMenuItems, ...fullTimeCoachMenuItems]
     if (role === 'super_admin') return mainMenuItems // 系统管理员只有首页
