@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { Users, Calendar, CalendarPlus, BarChart3, Clock, BookOpen, ArrowRight } from 'lucide-react'
+import { Users, Calendar, CalendarPlus, BarChart3, Clock, BookOpen, ArrowRight, User } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ export default function ParentHomePage() {
   const [loading, setLoading] = React.useState(true)
   const [bookDialogOpen, setBookDialogOpen] = React.useState(false)
   const [bookChildId, setBookChildId] = React.useState<number | null>(null)
+  const [isParentStudent, setIsParentStudent] = React.useState(false)
 
   const today = new Date()
   const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -77,6 +78,18 @@ export default function ParentHomePage() {
     fetchAll()
   }, [dateStr])
 
+  // 检测家长是否同时也是学员
+  React.useEffect(() => {
+    authFetch('/api/user/roles')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.isStudent) {
+          setIsParentStudent(true)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -90,6 +103,30 @@ export default function ParentHomePage() {
       <div className="flex items-center gap-1.5 text-sm text-gray-500">
         <span className="text-gray-900 font-medium">首页</span>
       </div>
+
+      {/* 我的课程 - 家长同时也是学员时显示 */}
+      {isParentStudent && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                  <User className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="font-medium">我的课程</p>
+                  <p className="text-sm text-gray-500">查看和预约您自己的课程</p>
+                </div>
+              </div>
+              <Link href="/parent/my-courses">
+                <Button variant="outline" size="sm">
+                  查看 <ArrowRight className="h-4 w-4 ml-1" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {children.length === 0 ? (
         <Card>

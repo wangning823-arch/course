@@ -11,6 +11,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const campusId = searchParams.get('campusId')
   const clubId = searchParams.get('clubId')
   const studentId = searchParams.get('studentId')
+  const studentIdsParam = searchParams.get('studentIds')
 
   const where: any = {}
   where.status = { not: 'cancelled' }
@@ -26,7 +27,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
   if (coachId) where.coachId = parseInt(coachId)
   if (campusId) where.campusId = parseInt(campusId)
-  if (studentId) {
+  if (studentIdsParam) {
+    // 支持多个学员ID（逗号分隔）
+    const ids = studentIdsParam.split(',').map(Number).filter(n => !isNaN(n))
+    if (ids.length > 0) {
+      where.students = { some: { studentId: { in: ids } } }
+    }
+  } else if (studentId) {
     where.students = { some: { studentId: parseInt(studentId) } }
   }
 

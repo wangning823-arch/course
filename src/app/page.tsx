@@ -24,14 +24,37 @@ export default function HomePage() {
   const user = useUserStore((s) => s.user)
   const currentClubId = useClubStore((s) => s.currentClubId)
   const role = user?.role || ''
+  const [redirecting, setRedirecting] = React.useState(false)
 
-  // 家长和学员重定向到各自首页
-  if (role === 'parent') {
-    if (typeof window !== 'undefined') window.location.replace('/parent')
-    return <div className="flex items-center justify-center min-h-[400px]"><div className="text-gray-500">加载中...</div></div>
-  }
-  if (role === 'student') {
-    if (typeof window !== 'undefined') window.location.replace('/student')
+  // 家长重定向到家长首页
+  React.useEffect(() => {
+    if (role === 'parent') {
+      window.location.replace('/parent')
+      setRedirecting(true)
+    }
+  }, [role])
+
+  // 学员：检测是否有孩子，有则重定向到家长首页
+  React.useEffect(() => {
+    if (role !== 'student') return
+    authFetch('/api/user/roles')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.isParent) {
+          window.location.replace('/parent')
+          setRedirecting(true)
+        } else {
+          window.location.replace('/student')
+          setRedirecting(true)
+        }
+      })
+      .catch(() => {
+        window.location.replace('/student')
+        setRedirecting(true)
+      })
+  }, [role])
+
+  if (role === 'parent' || role === 'student' || redirecting) {
     return <div className="flex items-center justify-center min-h-[400px]"><div className="text-gray-500">加载中...</div></div>
   }
 

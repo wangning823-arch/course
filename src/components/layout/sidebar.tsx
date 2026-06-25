@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import {
   Home, Calendar, Timer, BarChart3, Settings, Users, Building2,
   MapPin, BookOpen, GraduationCap, DollarSign, ChevronDown, ChevronLeft,
-  MessageSquare, CalendarPlus, User, Bell, ClipboardCheck
+  MessageSquare, CalendarPlus, User, Bell, ClipboardCheck, UserCircle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUserStore } from '@/stores/user-store'
@@ -22,20 +22,20 @@ interface SidebarProps {
 // 主菜单（所有角色都有）
 const mainMenuItems = [
   { icon: Home, label: '首页', href: '/' },
+  { icon: Bell, label: '通知管理', href: '/notifications' },
 ]
 
 // 学员角色菜单
 const studentMenuItems = [
-  { icon: Calendar, label: '我的课程', href: '/student/courses' },
+  { icon: Calendar, label: '课程日历', href: '/student/courses/calendar' },
   { icon: Timer, label: '课时记录', href: '/student/lessons' },
   { icon: BarChart3, label: '学习统计', href: '/student/stats' },
-  { icon: CalendarPlus, label: '预约教练', href: '/student/book' },
-  { icon: User, label: '个人中心', href: '/student/profile' },
+  { icon: User, label: '个人中心', href: '/profile' },
 ]
 
 // 家长角色菜单
 const parentMenuItems = [
-  { icon: Calendar, label: '课程查看', href: '/parent/courses' },
+  { icon: Calendar, label: '孩子课程', href: '/parent/courses' },
   { icon: Users, label: '孩子管理', href: '/parent/children' },
   { icon: BarChart3, label: '学习统计', href: '/student/stats' },
   { icon: User, label: '个人中心', href: '/profile' },
@@ -92,8 +92,36 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
   const currentClubId = useClubStore((s) => s.currentClubId)
   const [adminOpen, setAdminOpen] = React.useState(true)
   const [logoText, setLogoText] = React.useState('课时管理系统')
+  const [isParentStudent, setIsParentStudent] = React.useState(false)
+  const [studentIsParent, setStudentIsParent] = React.useState(false)
 
   const role = user?.role || ''
+
+  // 家长同时也是学员时，检测并显示"我的课程"
+  React.useEffect(() => {
+    if (role !== 'parent') return
+    authFetch('/api/user/roles')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.isStudent) {
+          setIsParentStudent(true)
+        }
+      })
+      .catch(() => {})
+  }, [role])
+
+  // 学员有孩子时，显示家长端菜单
+  React.useEffect(() => {
+    if (role !== 'student') return
+    authFetch('/api/user/roles')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.isParent) {
+          setStudentIsParent(true)
+        }
+      })
+      .catch(() => {})
+  }, [role])
 
   React.useEffect(() => {
     if (user && user.role !== 'super_admin') {
@@ -114,8 +142,28 @@ export function Sidebar({ open, onToggle, onClose }: SidebarProps) {
 
   // 根据角色选择菜单
   const getMainItems = () => {
-    if (role === 'student') return [{ icon: Home, label: '首页', href: '/student' }, ...studentMenuItems]
-    if (role === 'parent') return [{ icon: Home, label: '首页', href: '/parent' }, ...parentMenuItems]
+    const notificationItem = { icon: Bell, label: '通知管理', href: '/notifications' }
+    if (role === 'student') {
+      // 学员有孩子时，使用家长端菜单
+      if (studentIsParent) {
+        const items = [{ icon: Home, label: '首页', href: '/parent' }]
+        items.push({ icon: Calendar, label: '我的课程', href: '/parent/my-courses' })
+        items.push(...parentMenuItems)
+        items.push(notificationItem)
+        return items
+      }
+      return [{ icon: Home, label: '首页', href: '/student' }, ...studentMenuItems, notificationItem]
+    }
+    if (role === 'parent') {
+      const items = [{ icon: Home, label: '首页', href: '/parent' }]
+      // 家长同时也是学员时，显示"我的课程"
+      if (isParentStudent) {
+        items.push({ icon: Calendar, label: '我的课程', href: '/parent/my-courses' })
+      }
+      items.push(...parentMenuItems)
+      items.push(notificationItem)
+      return items
+    }
     if (role === 'coach' || role === 'part_time_coach') return [...mainMenuItems, ...partTimeCoachMenuItems]
     if (role === 'full_time_coach') return [...mainMenuItems, ...fullTimeCoachMenuItems]
     if (role === 'super_admin') return mainMenuItems // 系统管理员只有首页

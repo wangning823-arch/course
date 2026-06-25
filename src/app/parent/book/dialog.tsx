@@ -14,9 +14,13 @@ interface Props {
   defaultChildId?: number | null
   defaultDate?: string
   defaultTime?: string
+  /** 学员模式：传入后隐藏孩子选择器，直接用 studentId 预约 */
+  studentMode?: boolean
+  studentId?: number
+  studentClubId?: number
 }
 
-export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDate, defaultTime }: Props) {
+export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDate, defaultTime, studentMode, studentId, studentClubId }: Props) {
   const [children, setChildren] = React.useState<any[]>([])
   const [selectedChild, setSelectedChild] = React.useState<any>(null)
   const [coaches, setCoaches] = React.useState<any[]>([])
@@ -45,6 +49,13 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
     setSuccessOpen(false)
     setCoachConflict(false)
 
+    // 学员模式：直接设置自己的信息，不需要选孩子
+    if (studentMode && studentId && studentClubId) {
+      setSelectedChild({ id: studentId, name: '自己', club: { id: studentClubId } })
+      setLoading(false)
+      return
+    }
+
     const fetchChildren = async () => {
       setLoading(true)
       try {
@@ -66,7 +77,7 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
       }
     }
     fetchChildren()
-  }, [open, defaultChildId, defaultDate, defaultTime])
+  }, [open, defaultChildId, defaultDate, defaultTime, studentMode, studentId, studentClubId])
 
   // 获取可预约的教练
   React.useEffect(() => {
@@ -164,7 +175,7 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>预约课程</DialogTitle>
-            <DialogDescription>为孩子预约课程</DialogDescription>
+            <DialogDescription>{studentMode ? '预约课程' : '为孩子预约课程'}</DialogDescription>
           </DialogHeader>
 
           {loading ? (
@@ -311,7 +322,7 @@ export function ParentBookDialog({ open, onOpenChange, defaultChildId, defaultDa
             <DialogDescription>请确认以下预约信息</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-4 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">孩子：</span><span>{selectedChild?.name}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">{studentMode ? '学员：' : '孩子：'}</span><span>{studentMode ? '自己' : selectedChild?.name}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">教练：</span><span>{selectedCoach?.name}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">科目：</span><span>{selectedSubject?.name}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">日期：</span><span>{selectedDate}</span></div>

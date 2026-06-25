@@ -134,16 +134,7 @@ export async function POST(request: NextRequest) {
         }, { status: 400 })
       }
     }
-    if (parentId) {
-      const existingStudent = await prisma.student.findFirst({
-        where: { parentId },
-      })
-      if (existingStudent) {
-        return NextResponse.json({
-          error: `该家长手机号的学员"${existingStudent.name}"已存在，无需重复创建`,
-        }, { status: 400 })
-      }
-    }
+    // 注意：一个家长可以有多个孩子，不做重复检查
 
     // 验证 clubId 是否有效（如果提供了的话）
     const parsedClubId = clubId ? parseInt(String(clubId)) : null

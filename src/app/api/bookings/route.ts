@@ -17,14 +17,18 @@ export async function GET(request: NextRequest) {
 
   // 根据角色过滤
   if (authUser.role === 'student') {
-    // 学员：只能看自己发起的预约
-    const student = await prisma.student.findFirst({
+    // 学员：看自己的预约 + 自己孩子的预约（学员家长）
+    const selfStudent = await prisma.student.findFirst({
       where: { userId: authUser.userId },
     })
-    if (!student) {
+    const childStudents = await prisma.student.findMany({
+      where: { parentId: authUser.userId },
+    })
+    const studentIds = [selfStudent?.id, ...childStudents.map(s => s.id)].filter(Boolean) as number[]
+    if (studentIds.length === 0) {
       return NextResponse.json([])
     }
-    where.studentId = student.id
+    where.studentId = { in: studentIds }
   } else if (authUser.role === 'parent') {
     // 家长：看自己孩子的预约
     const students = await prisma.student.findMany({
@@ -81,13 +85,36 @@ export async function POST(request: NextRequest) {
   // 获取学员信息
   let studentId: number | null = null
   if (authUser.role === 'student') {
-    const student = await prisma.student.findFirst({
-      where: { userId: authUser.userId },
-    })
-    if (!student) {
-      return NextResponse.json({ error: '学员信息不存在' }, { status: 404 })
+    if (requestedStudentId) {
+      // 学员家长为孩子预约：验证该学员的 parentId 是当前用户
+      const student = await prisma.student.findFirst({
+        where: {
+          id: requestedStudentId,
+          parentId: authUser.userId,
+        },
+      })
+      if (!student) {
+        // 不是自己的孩子，检查是否是自己
+        const selfStudent = await prisma.student.findFirst({
+          where: { userId: authUser.userId },
+        })
+        if (!selfStudent || selfStudent.id !== requestedStudentId) {
+          return NextResponse.json({ error: '学员信息不存在' }, { status: 404 })
+        }
+        studentId = selfStudent.id
+      } else {
+        studentId = student.id
+      }
+    } else {
+      // 没传 studentId，默认用自己的
+      const student = await prisma.student.findFirst({
+        where: { userId: authUser.userId },
+      })
+      if (!student) {
+        return NextResponse.json({ error: '学员信息不存在' }, { status: 404 })
+      }
+      studentId = student.id
     }
-    studentId = student.id
   } else {
     // 家长：从请求中获取学员ID
     if (requestedStudentId) {

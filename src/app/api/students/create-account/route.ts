@@ -49,25 +49,71 @@ export async function POST(request: NextRequest) {
     where: { phone: loginPhone },
   })
 
-  if (existingUser) {
-    return NextResponse.json({ error: '该手机号已被其他账号使用' }, { status: 400 })
+  let newUser: any
+  let parentId: number | null = null
+
+  if (studentType === 'minor') {
+    // 未成年学员：家长手机号如果已有账号，直接关联；否则创建
+    if (existingUser) {
+      // 家长已有账号，直接关联
+      parentId = existingUser.id
+      newUser = existingUser
+    } else {
+      // 创建家长账号
+      const passwordHash = await hashPassword(password)
+      newUser = await prisma.user.create({
+        data: {
+          phone: loginPhone,
+          name: student.parentName || `${student.name}的家长`,
+          passwordHash,
+          role: 'parent',
+          gender: student.gender,
+          birthDate: student.birthDate,
+        },
+      })
+      parentId = newUser.id
+    }
+    // 关联家长账号
+    await prisma.student.update({
+      where: { id: studentId },
+      data: { parentId },
+    })
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        phone: newUser.phone,
+        role: newUser.role,
+      },
+      message: existingUser ? '已关联家长已有账号' : '家长账号创建成功',
+    })
+  } else {
+    // 成年学员
+    if (existingUser) {
+      return NextResponse.json({ error: '该手机号已被其他账号使用' }, { status: 400 })
+    }
+
+    // 创建密码哈希
+    const passwordHash = await hashPassword(password)
+
+    // 创建学员用户
+    newUser = await prisma.user.create({
+      data: {
+        phone: loginPhone,
+        name: student.name,
+        passwordHash,
+        role: 'student',
+        gender: student.gender,
+        birthDate: student.birthDate,
+      },
+    })
+    // 关联自己的账号
+    await prisma.student.update({
+      where: { id: studentId },
+      data: { userId: newUser.id },
+    })
   }
-
-  // 创建密码哈希
-  const passwordHash = await hashPassword(password)
-
-  // 创建用户账号
-  const role = studentType === 'minor' ? 'parent' : 'student'
-  const newUser = await prisma.user.create({
-    data: {
-      phone: loginPhone,
-      name: studentType === 'minor' ? (student.parentName || `${student.name}的家长`) : student.name,
-      passwordHash,
-      role,
-      gender: student.gender,
-      birthDate: student.birthDate,
-    },
-  })
 
   // 更新学员记录，关联用户账号
   if (studentType === 'minor') {
