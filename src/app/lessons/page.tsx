@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Search, Plus, Edit, Trash2, Check } from 'lucide-react'
+import { Search, Plus, Edit, Trash2, Check, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,7 @@ import { ClubSelector } from '@/components/club-selector'
 import { authFetch } from '@/lib/fetch-client'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useUserStore } from '@/stores/user-store'
+import { exportLessons } from '@/lib/export-utils'
 import { useClubStore } from '@/stores/club-store'
 import { Lesson, Course, Student, Coach, Subject, Club, LessonStatus } from '@/types/api'
 
@@ -418,6 +419,15 @@ export default function LessonsPage() {
         <h1 className="text-2xl font-bold">课时记录</h1>
         <div className="flex items-center gap-3">
           <ClubSelector />
+          {sortedLessons.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => exportLessons(sortedLessons)}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              导出
+            </Button>
+          )}
           <Dialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); if (!v) resetForm() }}>
           <DialogTrigger asChild>
             <Button onClick={() => {
