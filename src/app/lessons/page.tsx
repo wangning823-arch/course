@@ -41,6 +41,9 @@ export default function LessonsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [selectedLesson, setSelectedLesson] = React.useState<LessonData | null>(null)
   const [timeRange, setTimeRange] = React.useState('month')
+  const [isCustomRange, setIsCustomRange] = React.useState(false)
+  const [customStartDate, setCustomStartDate] = React.useState('')
+  const [customEndDate, setCustomEndDate] = React.useState('')
   const [currentPage, setCurrentPage] = React.useState(1)
   const pageSize = 20
 
@@ -53,6 +56,31 @@ export default function LessonsPage() {
 
   const role = user?.role || ''
   const userId = user?.id || null
+
+  // 格式化日期为 YYYY-MM-DD
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // 处理时间段选择
+  const handleTimeRangeChange = (value: string) => {
+    if (value === 'custom') {
+      setIsCustomRange(true)
+      // 设置默认的自定义范围（上个月）
+      const now = new Date()
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
+      setCustomStartDate(formatDate(lastMonthStart))
+      setCustomEndDate(formatDate(lastMonthEnd))
+      setTimeRange('custom')
+    } else {
+      setIsCustomRange(false)
+      setTimeRange(value)
+    }
+  }
 
   // 创建表单
   const [form, setForm] = React.useState({
@@ -226,8 +254,12 @@ export default function LessonsPage() {
       }
 
       // 添加时间范围参数（按课程过滤时不添加时间范围，显示所有）
-      if (!courseIdFromUrl && timeRange !== 'all') {
-        params += `&timeRange=${timeRange}`
+      if (!courseIdFromUrl) {
+        if (isCustomRange && customStartDate && customEndDate) {
+          params += `&startDate=${customStartDate}&endDate=${customEndDate}`
+        } else if (timeRange !== 'all') {
+          params += `&timeRange=${timeRange}`
+        }
       }
 
       if (debouncedSearch) params += `&search=${encodeURIComponent(debouncedSearch)}`
@@ -240,7 +272,7 @@ export default function LessonsPage() {
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, timeRange, courseIdFromUrl])
+  }, [debouncedSearch, timeRange, courseIdFromUrl, isCustomRange, customStartDate, customEndDate])
 
   React.useEffect(() => {
     loadLessons()
@@ -418,7 +450,6 @@ export default function LessonsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">课时记录</h1>
         <div className="flex items-center gap-3">
-          <ClubSelector />
           {sortedLessons.length > 0 && (
             <Button
               variant="outline"
@@ -676,17 +707,9 @@ export default function LessonsPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="搜索科目、教练、学员..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Select value={timeRange} onValueChange={(v) => setTimeRange(v)}>
+          <div className="flex flex-wrap items-center gap-2">
+            <ClubSelector />
+            <Select value={isCustomRange ? 'custom' : timeRange} onValueChange={handleTimeRangeChange}>
               <SelectTrigger className="w-[100px] flex-shrink-0">
                 <SelectValue />
               </SelectTrigger>
@@ -694,11 +717,59 @@ export default function LessonsPage() {
                 <SelectItem value="all">全部时间</SelectItem>
                 <SelectItem value="today">今天</SelectItem>
                 <SelectItem value="week">本周</SelectItem>
+                <SelectItem value="lastWeek">上周</SelectItem>
                 <SelectItem value="month">本月</SelectItem>
+                <SelectItem value="lastMonth">上月</SelectItem>
                 <SelectItem value="quarter">本季度</SelectItem>
+                <SelectItem value="lastQuarter">上季度</SelectItem>
                 <SelectItem value="year">本年</SelectItem>
+                <SelectItem value="lastYear">去年</SelectItem>
+                <SelectItem value="custom">自定义范围</SelectItem>
               </SelectContent>
             </Select>
+            {isCustomRange && (
+              <div className="hidden sm:flex items-center gap-2">
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="border rounded-md px-3 py-1.5 text-sm"
+                />
+                <span className="text-gray-500">至</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="border rounded-md px-3 py-1.5 text-sm"
+                />
+              </div>
+            )}
+          </div>
+          {isCustomRange && (
+            <div className="sm:hidden flex items-center gap-2 mt-2">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="border rounded-md px-3 py-1.5 text-sm flex-1 min-w-0"
+              />
+              <span className="text-gray-500 flex-shrink-0">至</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="border rounded-md px-3 py-1.5 text-sm flex-1 min-w-0"
+              />
+            </div>
+          )}
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="搜索科目、教练、学员..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
           </div>
           <div className="text-sm text-gray-500 mt-2">
             共 {sortedLessons.length} 条记录，总时长 {totalTimeDisplay}

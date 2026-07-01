@@ -7,6 +7,8 @@ export async function GET(request: NextRequest) {
   const period = searchParams.get('period') || 'month'
   const clubId = searchParams.get('clubId')
   const coachId = searchParams.get('coachId')
+  const customStartDate = searchParams.get('startDate')
+  const customEndDate = searchParams.get('endDate')
 
   // 基础过滤条件：按俱乐部过滤课程（使用 course.scheduledDate 而非 lesson.createdAt）
   const baseWhere: any = {
@@ -23,23 +25,67 @@ export async function GET(request: NextRequest) {
   // 计算时间范围（基于课程的 scheduledDate）
   const now = new Date()
   let startDate: Date
+  let endDate: Date | null = null
 
-  switch (period) {
-    case 'week':
-      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      break
-    case 'quarter':
-      startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1)
-      break
-    case 'year':
-      startDate = new Date(now.getFullYear(), 0, 1)
-      break
-    default: // month
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+  // 处理自定义日期范围
+  if (customStartDate && customEndDate) {
+    startDate = new Date(customStartDate)
+    endDate = new Date(customEndDate)
+    endDate.setHours(23, 59, 59, 999) // 设置为当天结束时间
+  } else {
+    switch (period) {
+      case 'week':
+        // 本周：从周一开始
+        const dayOfWeek = now.getDay()
+        const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset)
+        break
+      case 'lastWeek':
+        // 上周
+        const lastWeekEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() - 1)
+        const lastWeekStart = new Date(lastWeekEnd)
+        lastWeekStart.setDate(lastWeekStart.getDate() - 6)
+        startDate = lastWeekStart
+        endDate = new Date(lastWeekEnd.getFullYear(), lastWeekEnd.getMonth(), lastWeekEnd.getDate(), 23, 59, 59)
+        break
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+        break
+      case 'lastMonth':
+        // 上月
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
+        break
+      case 'quarter':
+        const quarterStart = Math.floor(now.getMonth() / 3) * 3
+        startDate = new Date(now.getFullYear(), quarterStart, 1)
+        break
+      case 'lastQuarter':
+        // 上季度
+        const lastQuarterEnd = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 0)
+        const lastQuarterStart = new Date(lastQuarterEnd.getFullYear(), lastQuarterEnd.getMonth() - 2, 1)
+        startDate = lastQuarterStart
+        endDate = new Date(lastQuarterEnd.getFullYear(), lastQuarterEnd.getMonth(), lastQuarterEnd.getDate(), 23, 59, 59)
+        break
+      case 'year':
+        startDate = new Date(now.getFullYear(), 0, 1)
+        break
+      case 'lastYear':
+        // 去年
+        startDate = new Date(now.getFullYear() - 1, 0, 1)
+        endDate = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59)
+        break
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    }
   }
 
   // 使用 course.scheduledDate 过滤（补录课时不会影响统计准确性）
-  const dateWhere = { ...baseWhere, course: { ...baseWhere.course, scheduledDate: { gte: startDate } } }
+  const scheduledDateFilter: any = { gte: startDate }
+  if (endDate) {
+    scheduledDateFilter.lte = endDate
+  }
+  const dateWhere = { ...baseWhere, course: { ...baseWhere.course, scheduledDate: scheduledDateFilter } }
 
   // 总课时数
   const totalLessons = await prisma.lesson.count({ where: dateWhere })

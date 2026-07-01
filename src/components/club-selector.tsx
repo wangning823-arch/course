@@ -72,7 +72,7 @@ export function ClubSelector() {
 
   return (
     <Select value={currentClubId || ''} onValueChange={handleChange}>
-      <SelectTrigger className="w-full sm:w-[200px] h-9">
+      <SelectTrigger className="w-[120px] sm:w-[200px] h-9">
         <SelectValue placeholder="选择俱乐部" />
       </SelectTrigger>
       <SelectContent>

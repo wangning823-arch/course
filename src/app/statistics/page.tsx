@@ -15,12 +15,20 @@ type StatsData = StatisticsData & { monthIncome?: number }
 
 export default function StatisticsPage() {
   const [period, setPeriod] = React.useState('month')
+  const [customStartDate, setCustomStartDate] = React.useState('')
+  const [customEndDate, setCustomEndDate] = React.useState('')
+  const [isCustomRange, setIsCustomRange] = React.useState(false)
   const user = useUserStore((s) => s.user)
   const currentClubId = useClubStore((s) => s.currentClubId)
 
   // 构建 API URL
   const buildUrl = React.useCallback(() => {
     let url = `/api/statistics?period=${period}`
+
+    // 自定义日期范围
+    if (isCustomRange && customStartDate && customEndDate) {
+      url += `&startDate=${customStartDate}&endDate=${customEndDate}`
+    }
 
     if ((user?.role === 'coach' || user?.role === 'part_time_coach') && user?.id) {
       url += `&coachId=${user.id}`
@@ -34,7 +42,32 @@ export default function StatisticsPage() {
     }
 
     return url
-  }, [period, user, currentClubId])
+  }, [period, user, currentClubId, isCustomRange, customStartDate, customEndDate])
+
+  // 处理时间段选择
+  const handlePeriodChange = (value: string) => {
+    if (value === 'custom') {
+      setIsCustomRange(true)
+      // 设置默认的自定义范围（上个月）
+      const now = new Date()
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
+      setCustomStartDate(formatDate(lastMonthStart))
+      setCustomEndDate(formatDate(lastMonthEnd))
+      setPeriod('custom')
+    } else {
+      setIsCustomRange(false)
+      setPeriod(value)
+    }
+  }
+
+  // 格式化日期为 YYYY-MM-DD
+  const formatDate = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
 
   const { data: stats, isLoading: loading } = useFetch<StatsData>(buildUrl(), {
     revalidateOnFocus: true,
@@ -44,19 +77,61 @@ export default function StatisticsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">课时统计</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <ClubSelector />
-          <Select value={period} onValueChange={setPeriod}>
+          <Select value={isCustomRange ? 'custom' : period} onValueChange={handlePeriodChange}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="week">本周</SelectItem>
+              <SelectItem value="lastWeek">上周</SelectItem>
               <SelectItem value="month">本月</SelectItem>
+              <SelectItem value="lastMonth">上月</SelectItem>
               <SelectItem value="quarter">本季度</SelectItem>
+              <SelectItem value="lastQuarter">上季度</SelectItem>
               <SelectItem value="year">本年</SelectItem>
+              <SelectItem value="lastYear">去年</SelectItem>
+              <SelectItem value="custom">自定义范围</SelectItem>
             </SelectContent>
           </Select>
+
+          {/* 自定义日期范围选择器 - 桌面端同行 */}
+          {isCustomRange && (
+            <div className="hidden sm:flex items-center gap-2">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="border rounded-md px-3 py-1.5 text-sm"
+              />
+              <span className="text-gray-500">至</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="border rounded-md px-3 py-1.5 text-sm"
+              />
+            </div>
+          )}
+          {/* 自定义日期范围选择器 - 手机端换行 */}
+          {isCustomRange && (
+            <div className="sm:hidden flex items-center gap-2 w-full mt-2">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="border rounded-md px-3 py-1.5 text-sm flex-1 min-w-0"
+              />
+              <span className="text-gray-500 flex-shrink-0">至</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="border rounded-md px-3 py-1.5 text-sm flex-1 min-w-0"
+              />
+            </div>
+          )}
         </div>
       </div>
 

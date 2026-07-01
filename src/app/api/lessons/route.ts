@@ -40,24 +40,47 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
         startDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate())
         endDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
         break
-      case 'week':
+      case 'week': {
         const dayOfWeek = now.getDay()
         const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
         startDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset)
         endDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - mondayOffset), 23, 59, 59)
         break
+      }
+      case 'lastWeek': {
+        const dayOfWeek = now.getDay()
+        const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+        startDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset - 7)
+        endDateFilter = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset - 1, 23, 59, 59)
+        break
+      }
       case 'month':
         startDateFilter = new Date(now.getFullYear(), now.getMonth(), 1)
         endDateFilter = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
         break
-      case 'quarter':
+      case 'lastMonth':
+        startDateFilter = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        endDateFilter = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
+        break
+      case 'quarter': {
         const quarterStart = Math.floor(now.getMonth() / 3) * 3
         startDateFilter = new Date(now.getFullYear(), quarterStart, 1)
         endDateFilter = new Date(now.getFullYear(), quarterStart + 3, 0, 23, 59, 59)
         break
+      }
+      case 'lastQuarter': {
+        const quarterStart = Math.floor(now.getMonth() / 3) * 3
+        startDateFilter = new Date(now.getFullYear(), quarterStart - 3, 1)
+        endDateFilter = new Date(now.getFullYear(), quarterStart, 0, 23, 59, 59)
+        break
+      }
       case 'year':
         startDateFilter = new Date(now.getFullYear(), 0, 1)
         endDateFilter = new Date(now.getFullYear(), 11, 31, 23, 59, 59)
+        break
+      case 'lastYear':
+        startDateFilter = new Date(now.getFullYear() - 1, 0, 1)
+        endDateFilter = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59)
         break
     }
 
@@ -71,9 +94,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       }
     }
   } else if (startDate && endDate) {
-    where.createdAt = {
-      gte: new Date(startDate),
-      lte: new Date(endDate),
+    // 自定义日期范围：按课程的上课日期过滤
+    where.course = {
+      ...where.course,
+      scheduledDate: {
+        gte: new Date(startDate),
+        lte: new Date(new Date(endDate).setHours(23, 59, 59)),
+      },
     }
   }
 
